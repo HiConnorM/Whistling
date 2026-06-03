@@ -1,0 +1,608 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+  output          = "../src/generated/client"
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgvector(map: "vector"), pg_trgm, citext]
+}
+
+// ─── Auth (Better Auth compatible) ───────────────────────────────────────────
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  name          String?
+  image         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sessions      Session[]
+  accounts      Account[]
+  organizationMemberships OrgMembership[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  userId                String
+  accountId             String
+  providerId            String
+  accessToken           String?   @db.Text
+  refreshToken          String?   @db.Text
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  idToken               String?   @db.Text
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([identifier, value])
+  @@map("verifications")
+}
+
+// ─── Organization ─────────────────────────────────────────────────────────────
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  logoUrl   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships   OrgMembership[]
+  businesses    Business[]
+  subscription  Subscription?
+
+  @@map("organizations")
+}
+
+model OrgMembership {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  role           OrgRole  @default(MEMBER)
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@map("org_memberships")
+}
+
+enum OrgRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+// ─── Subscription ────────────────────────────────────────────────────────────
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  organizationId       String             @unique
+  plan                 SubscriptionPlan   @default(STARTER)
+  status               SubscriptionStatus @default(TRIALING)
+  stripeCustomerId     String?            @unique
+  stripeSubscriptionId String?            @unique
+  stripePriceId        String?
+  trialEndsAt          DateTime?
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean            @default(false)
+  canceledAt           DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+enum SubscriptionPlan {
+  STARTER
+  PRO
+  GROWTH
+  AGENCY
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIALING
+  PAST_DUE
+  CANCELED
+  PAUSED
+}
+
+// ─── Business ────────────────────────────────────────────────────────────────
+
+model Business {
+  id             String           @id @default(cuid())
+  organizationId String
+  name           String
+  category       BusinessCategory
+  websiteUrl     String?
+  googlePlaceId  String?
+  description    String?
+  city           String
+  state          String
+  country        String           @default("US")
+  goals          String[]
+  isActive       Boolean          @default(true)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  organization  Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sources       BusinessSource[]
+  competitors   Competitor[]
+  mentions      Mention[]
+  clusters      TopicCluster[]
+  recommendations Recommendation[]
+  reports       Report[]
+  pulseScores   PulseScore[]
+  scanJobs      ScanJob[]
+
+  @@index([organizationId])
+  @@index([category])
+  @@map("businesses")
+}
+
+enum BusinessCategory {
+  RESTAURANT
+  CAFE
+  BAR
+  RETAIL
+  HEALTH_WELLNESS
+  BEAUTY_SALON
+  MEDICAL_DENTAL
+  HOME_SERVICES
+  FITNESS_GYM
+  HOSPITALITY
+  PROFESSIONAL_SERVICES
+  AUTO_SERVICES
+  PET_SERVICES
+  EDUCATION
+  ENTERTAINMENT
+  OTHER
+}
+
+// ─── Source ───────────────────────────────────────────────────────────────────
+
+model BusinessSource {
+  id                    String       @id @default(cuid())
+  businessId            String
+  type                  SourceType
+  url                   String?
+  externalId            String?
+  accessTokenEncrypted  String?      @db.Text
+  refreshTokenEncrypted String?      @db.Text
+  tokenExpiresAt        DateTime?
+  status                SourceStatus @default(PENDING)
+  lastScannedAt         DateTime?
+  nextScanAt            DateTime?
+  cursor                String?
+  errorMessage          String?
+  errorCount            Int          @default(0)
+  totalItemsCollected   Int          @default(0)
+  metadata              Json?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  business  Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  rawItems  RawItem[]
+  mentions  Mention[]
+  scanJobs  ScanJob[]
+
+  @@index([businessId])
+  @@index([status])
+  @@index([nextScanAt])
+  @@map("business_sources")
+}
+
+enum SourceType {
+  GOOGLE
+  INSTAGRAM
+  FACEBOOK
+  YOUTUBE
+  TIKTOK
+  YELP
+  TRIPADVISOR
+  CSV
+  WEBSITE_FORM
+  EMAIL_INBOX
+  MANUAL
+}
+
+enum SourceStatus {
+  CONNECTED
+  NEEDS_AUTH
+  ERROR
+  PAUSED
+  PENDING
+}
+
+// ─── Competitor ───────────────────────────────────────────────────────────────
+
+model Competitor {
+  id               String   @id @default(cuid())
+  businessId       String
+  name             String
+  googlePlaceId    String?
+  googleUrl        String?
+  yelpUrl          String?
+  facebookUrl      String?
+  instagramHandle  String?
+  websiteUrl       String?
+  city             String?
+  notes            String?
+  isActive         Boolean  @default(true)
+  lastScannedAt    DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  business  Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  mentions  Mention[]
+
+  @@index([businessId])
+  @@map("competitors")
+}
+
+// ─── Raw Item ─────────────────────────────────────────────────────────────────
+
+model RawItem {
+  id           String   @id @default(cuid())
+  sourceId     String
+  externalId   String
+  rawJsonUrl   String?
+  rawJson      Json?
+  rawHtml      String?  @db.Text
+  collectedAt  DateTime @default(now())
+  checksum     String
+  processedAt  DateTime?
+  processingError String?
+
+  source    BusinessSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  mentions  Mention[]
+
+  @@unique([sourceId, externalId])
+  @@unique([sourceId, checksum])
+  @@index([sourceId])
+  @@index([collectedAt])
+  @@map("raw_items")
+}
+
+// ─── Mention ──────────────────────────────────────────────────────────────────
+
+model Mention {
+  id           String     @id @default(cuid())
+  businessId   String
+  sourceId     String
+  rawItemId    String?
+  competitorId String?
+  externalId   String
+  sourceType   SourceType
+  authorName   String?
+  authorId     String?
+  text         String     @db.Text
+  textHash     String
+  rating       Float?
+  url          String?
+  language     String     @default("en")
+  publishedAt  DateTime?
+  collectedAt  DateTime   @default(now())
+  isCompetitor Boolean    @default(false)
+  isDuplicate  Boolean    @default(false)
+  isSpam       Boolean    @default(false)
+
+  business    Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  source      BusinessSource  @relation(fields: [sourceId], references: [id])
+  rawItem     RawItem?        @relation(fields: [rawItemId], references: [id])
+  competitor  Competitor?     @relation(fields: [competitorId], references: [id])
+  analysis    MentionAnalysis?
+  embedding   MentionEmbedding?
+
+  @@unique([businessId, sourceType, externalId])
+  @@index([businessId])
+  @@index([businessId, publishedAt])
+  @@index([businessId, isCompetitor])
+  @@index([businessId, sourceType])
+  @@index([textHash])
+  @@map("mentions")
+}
+
+// ─── Mention Analysis ─────────────────────────────────────────────────────────
+
+model MentionAnalysis {
+  id              String   @id @default(cuid())
+  mentionId       String   @unique
+  sentiment       Sentiment
+  sentimentScore  Float
+  topics          String[]
+  complaintTypes  String[]
+  praiseTypes     String[]
+  severity        Int      @db.SmallInt
+  urgency         Int      @db.SmallInt
+  actionability   Int      @db.SmallInt
+  businessArea    String
+  summary         String?  @db.Text
+  isSpam          Boolean  @default(false)
+  containsPII     Boolean  @default(false)
+  modelVersion    String
+  processedAt     DateTime @default(now())
+
+  mention Mention @relation(fields: [mentionId], references: [id], onDelete: Cascade)
+
+  @@index([mentionId])
+  @@map("mention_analyses")
+}
+
+enum Sentiment {
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+  MIXED
+}
+
+// ─── Mention Embedding ────────────────────────────────────────────────────────
+
+model MentionEmbedding {
+  id          String                 @id @default(cuid())
+  mentionId   String                 @unique
+  embedding   Unsupported("vector(1536)")?
+  modelVersion String
+  createdAt   DateTime               @default(now())
+
+  mention Mention @relation(fields: [mentionId], references: [id], onDelete: Cascade)
+
+  @@map("mention_embeddings")
+}
+
+// ─── Topic Cluster ────────────────────────────────────────────────────────────
+
+model TopicCluster {
+  id                      String          @id @default(cuid())
+  businessId              String
+  label                   String
+  topic                   String
+  sentiment               Sentiment
+  isCompetitor            Boolean         @default(false)
+  mentionCount            Int             @default(0)
+  periodStart             DateTime
+  periodEnd               DateTime
+  trendDirection          TrendDirection  @default(FLAT)
+  changePercent           Float           @default(0)
+  representativeMentionIds String[]
+  avgSeverity             Float?
+  avgRating               Float?
+  createdAt               DateTime        @default(now())
+  updatedAt               DateTime        @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, periodEnd])
+  @@index([businessId, topic])
+  @@map("topic_clusters")
+}
+
+enum TrendDirection {
+  UP
+  DOWN
+  FLAT
+}
+
+// ─── Recommendation ───────────────────────────────────────────────────────────
+
+model Recommendation {
+  id                String                  @id @default(cuid())
+  businessId        String
+  reportId          String?
+  title             String
+  category          RecommendationCategory
+  priority          RecommendationPriority  @default(MEDIUM)
+  evidence          String[]
+  suggestedAction   String                  @db.Text
+  why               String                  @db.Text
+  estimatedImpact   String
+  difficulty        Difficulty              @default(MEDIUM)
+  suggestedOwner    String?
+  suggestedTimeline String?
+  relatedTopics     String[]
+  relatedMentionIds String[]
+  status            RecommendationStatus    @default(NEW)
+  statusNote        String?
+  statusUpdatedAt   DateTime?
+  generatedAt       DateTime                @default(now())
+  expiresAt         DateTime?
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  report   Report?  @relation(fields: [reportId], references: [id])
+
+  @@index([businessId, status])
+  @@index([businessId, priority])
+  @@map("recommendations")
+}
+
+enum RecommendationCategory {
+  OPERATIONS
+  MARKETING
+  SERVICE
+  WEBSITE
+  PRODUCT
+  PRICING
+  STAFFING
+  COMPETITOR_RESPONSE
+}
+
+enum RecommendationPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum RecommendationStatus {
+  NEW
+  ACCEPTED
+  DISMISSED
+  COMPLETED
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+// ─── Report ───────────────────────────────────────────────────────────────────
+
+model Report {
+  id              String       @id @default(cuid())
+  businessId      String
+  type            ReportType   @default(WEEKLY)
+  periodStart     DateTime
+  periodEnd       DateTime
+  pulseScore      Int?
+  pulsePrevious   Int?
+  biggestWin      String?      @db.Text
+  biggestRisk     String?      @db.Text
+  bestAction      String?      @db.Text
+  topPraises      Json?
+  topComplaints   Json?
+  customerRequests Json?
+  competitorInsights Json?
+  marketGaps      Json?
+  emailSentAt     DateTime?
+  emailSubject    String?
+  status          ReportStatus @default(GENERATING)
+  generatedAt     DateTime?
+  createdAt       DateTime     @default(now())
+
+  business        Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  sections        ReportSection[]
+  recommendations Recommendation[]
+
+  @@index([businessId, periodEnd])
+  @@index([status])
+  @@map("reports")
+}
+
+enum ReportType {
+  WEEKLY
+  MONTHLY
+  CUSTOM
+}
+
+enum ReportStatus {
+  GENERATING
+  READY
+  SENT
+  FAILED
+}
+
+model ReportSection {
+  id       String @id @default(cuid())
+  reportId String
+  key      String
+  title    String
+  content  String @db.Text
+  order    Int    @default(0)
+  metadata Json?
+
+  report Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId])
+  @@map("report_sections")
+}
+
+// ─── Pulse Score ─────────────────────────────────────────────────────────────
+
+model PulseScore {
+  id                    String   @id @default(cuid())
+  businessId            String
+  total                 Int
+  sentimentScore        Int
+  reviewVelocityScore   Int
+  complaintSeverityScore Int
+  responseRateScore     Int
+  competitorScore       Int
+  trendScore            Int
+  calculatedAt          DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, calculatedAt])
+  @@map("pulse_scores")
+}
+
+// ─── Scan Job ─────────────────────────────────────────────────────────────────
+
+model ScanJob {
+  id            String       @id @default(cuid())
+  businessId    String
+  sourceId      String?
+  type          String
+  status        JobStatus    @default(PENDING)
+  bullJobId     String?      @unique
+  itemsCollected Int         @default(0)
+  itemsProcessed Int         @default(0)
+  errorMessage  String?      @db.Text
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime     @default(now())
+
+  business Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  source   BusinessSource? @relation(fields: [sourceId], references: [id])
+
+  @@index([businessId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("scan_jobs")
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
