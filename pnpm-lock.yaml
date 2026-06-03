@@ -153,6 +153,9 @@ importers:
       '@whistling/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@whistling/jobs':
+        specifier: workspace:*
+        version: link:../../packages/jobs
       better-auth:
         specifier: ^1.2.5
         version: 1.6.14(@prisma/client@6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3))(next@15.5.19(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(prisma@6.19.3(typescript@5.9.3))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)

@@ -119,3 +119,6 @@ export const SUBSCRIPTION_STATUSES = [
   'paused',
 ] as const
 export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUSES)[number]
+
+export const CONNECTOR_MODES = ['oauth', 'api_key', 'public_url', 'csv', 'manual', 'provider'] as const
+export type ConnectorMode = (typeof CONNECTOR_MODES)[number]

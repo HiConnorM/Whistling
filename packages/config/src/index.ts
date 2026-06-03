@@ -10,8 +10,8 @@ const serverEnvSchema = z.object({
   REDIS_URL: z.string().url(),
 
   // Auth (Better Auth)
-  AUTH_SECRET: z.string().min(32),
-  AUTH_URL: z.string().url(),
+  BETTER_AUTH_SECRET: z.string().min(32),
+  BETTER_AUTH_URL: z.string().url(),
 
   // Stripe
   STRIPE_SECRET_KEY: z.string().startsWith('sk_'),

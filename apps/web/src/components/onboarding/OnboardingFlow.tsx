@@ -5,29 +5,20 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useRouter } from 'next/navigation'
-import { CheckCircle, ChevronRight, Building2, Globe, Users, Upload } from 'lucide-react'
-import { BUSINESS_CATEGORIES } from '@whistling/domain'
+import { CheckCircle, ChevronRight, Building2, Globe, Users, Link2, Check } from 'lucide-react'
+import { BUSINESS_CATEGORIES, SOURCE_CAPABILITIES } from '@whistling/domain'
 import { cn } from '@/lib/utils'
-import { api } from '@/lib/api'
 
 const STEPS = [
-  { id: 'account', label: 'Account' },
+  { id: 'org', label: 'Workspace' },
   { id: 'business', label: 'Business profile' },
   { id: 'sources', label: 'Connect sources' },
   { id: 'competitors', label: 'Add competitors' },
 ]
 
-const accountSchema = z
-  .object({
-    name: z.string().min(2, 'Name required'),
-    email: z.string().email('Valid email required'),
-    password: z.string().min(8, 'At least 8 characters'),
-    confirmPassword: z.string(),
-  })
-  .refine((d) => d.password === d.confirmPassword, {
-    message: 'Passwords do not match',
-    path: ['confirmPassword'],
-  })
+const orgSchema = z.object({
+  name: z.string().min(2, 'Workspace name required'),
+})
 
 const businessSchema = z.object({
   name: z.string().min(2, 'Business name required'),
@@ -35,71 +26,69 @@ const businessSchema = z.object({
   city: z.string().min(1, 'City required'),
   state: z.string().min(1, 'State required'),
   websiteUrl: z.string().url('Enter a valid URL').optional().or(z.literal('')),
-  goals: z.array(z.string()).optional(),
 })
 
-type AccountData = z.infer<typeof accountSchema>
+type OrgData = z.infer<typeof orgSchema>
 type BusinessData = z.infer<typeof businessSchema>
 
+const CATEGORY_LABELS: Record<string, string> = {
+  restaurant: 'Restaurant', cafe: 'Café', bar: 'Bar', retail: 'Retail store',
+  health_wellness: 'Health & wellness', beauty_salon: 'Beauty salon',
+  medical_dental: 'Medical / dental', home_services: 'Home services',
+  fitness_gym: 'Fitness / gym', hospitality: 'Hospitality / hotel',
+  professional_services: 'Professional services', auto_services: 'Auto services',
+  pet_services: 'Pet services', education: 'Education', entertainment: 'Entertainment',
+  other: 'Other',
+}
+
 const GOAL_OPTIONS = [
-  'More bookings',
-  'More foot traffic',
-  'More positive reviews',
-  'Better reputation',
-  'Improve customer service',
-  'Beat nearby competitors',
-  'Find service gaps',
-  'Grow social following',
+  'More bookings', 'More foot traffic', 'More positive reviews', 'Better reputation',
+  'Improve customer service', 'Beat nearby competitors', 'Find service gaps', 'Grow social following',
 ]
 
-const CATEGORY_LABELS: Record<string, string> = {
-  restaurant: 'Restaurant',
-  cafe: 'Café',
-  bar: 'Bar',
-  retail: 'Retail store',
-  health_wellness: 'Health & wellness',
-  beauty_salon: 'Beauty salon',
-  medical_dental: 'Medical / dental',
-  home_services: 'Home services',
-  fitness_gym: 'Fitness / gym',
-  hospitality: 'Hospitality / hotel',
-  professional_services: 'Professional services',
-  auto_services: 'Auto services',
-  pet_services: 'Pet services',
-  education: 'Education',
-  entertainment: 'Entertainment',
-  other: 'Other',
+const ONBOARDING_SOURCES = [
+  { type: 'google' as const, label: 'Google Business Profile', icon: '⭐' },
+  { type: 'yelp' as const, label: 'Yelp', icon: '🌟' },
+  { type: 'tripadvisor' as const, label: 'TripAdvisor', icon: '🦉' },
+  { type: 'instagram' as const, label: 'Instagram', icon: '📷' },
+  { type: 'facebook' as const, label: 'Facebook', icon: '👍' },
+]
+
+type ConnectedSource = { type: string; url?: string }
+
+async function apiFetch<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error ?? 'Request failed')
+  return data as T
 }
 
 export function OnboardingFlow() {
   const router = useRouter()
   const [step, setStep] = useState(0)
   const [selectedGoals, setSelectedGoals] = useState<string[]>([])
-  const [sources, setSources] = useState<{ type: string; url: string }[]>([])
-  const [competitors, setCompetitors] = useState<{ name: string; googleUrl: string }[]>([
-    { name: '', googleUrl: '' },
-  ])
+  const [connectedSources, setConnectedSources] = useState<ConnectedSource[]>([])
+  const [urlInputs, setUrlInputs] = useState<Record<string, string>>({})
+  const [competitors, setCompetitors] = useState([{ name: '', googleUrl: '' }])
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [orgId, setOrgId] = useState<string | null>(null)
   const [businessId, setBusinessId] = useState<string | null>(null)
 
-  const accountForm = useForm<AccountData>({ resolver: zodResolver(accountSchema) })
+  const orgForm = useForm<OrgData>({ resolver: zodResolver(orgSchema) })
   const businessForm = useForm<BusinessData>({ resolver: zodResolver(businessSchema) })
 
-  const handleAccountSubmit = async (data: AccountData) => {
+  const handleOrgSubmit = async (data: OrgData) => {
     setError(null)
     setIsSubmitting(true)
     try {
-      const result = await api.post<{ organizationId: string }>('/api/auth/sign-up', {
-        name: data.name,
-        email: data.email,
-        password: data.password,
-      })
-      setOrgId(result.organizationId)
+      await apiFetch('/api/onboarding/organization', { name: data.name })
       setStep(1)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Account creation failed')
+      setError(err instanceof Error ? err.message : 'Failed to create workspace')
     } finally {
       setIsSubmitting(false)
     }
@@ -109,9 +98,10 @@ export function OnboardingFlow() {
     setError(null)
     setIsSubmitting(true)
     try {
-      const result = await api.post<{ id: string }>('/api/businesses', {
+      const result = await apiFetch<{ id: string }>('/api/businesses', {
         ...data,
         goals: selectedGoals,
+        websiteUrl: data.websiteUrl || undefined,
       })
       setBusinessId(result.id)
       setStep(2)
@@ -122,24 +112,34 @@ export function OnboardingFlow() {
     }
   }
 
-  const handleSourcesSubmit = async () => {
-    setStep(3)
+  const connectSource = async (type: string, url?: string) => {
+    if (!businessId) return
+    if (connectedSources.some((s) => s.type === type)) return
+    try {
+      await apiFetch(`/api/businesses/${businessId}/sources`, { type, url })
+      setConnectedSources((prev) => [...prev, { type, url }])
+    } catch {
+      // non-fatal: user can connect later in Settings
+    }
+  }
+
+  const handleUrlConnect = async (type: string) => {
+    const url = urlInputs[type]?.trim()
+    if (!url) return
+    await connectSource(type, url)
   }
 
   const handleCompetitorsSubmit = async () => {
     setError(null)
     setIsSubmitting(true)
     try {
-      const validCompetitors = competitors.filter((c) => c.name.trim())
-      for (const comp of validCompetitors) {
-        await api.post(`/api/competitors/${businessId}`, comp)
+      const valid = competitors.filter((c) => c.name.trim())
+      for (const comp of valid) {
+        await apiFetch(`/api/competitors/${businessId}`, comp)
       }
-
-      // Kick off first scan
       if (businessId) {
-        await api.post(`/api/businesses/${businessId}/scan`)
+        await apiFetch(`/api/businesses/${businessId}/scan`, {})
       }
-
       router.push(`/dashboard?businessId=${businessId}&firstScan=true`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save competitors')
@@ -175,9 +175,7 @@ export function OnboardingFlow() {
               >
                 {s.label}
               </span>
-              {i < STEPS.length - 1 && (
-                <ChevronRight className="mx-3 h-4 w-4 text-gray-300" />
-              )}
+              {i < STEPS.length - 1 && <ChevronRight className="mx-3 h-4 w-4 text-gray-300" />}
             </div>
           ))}
         </div>
@@ -187,63 +185,29 @@ export function OnboardingFlow() {
         <div className="mb-6 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       )}
 
-      {/* Step 0: Account */}
+      {/* Step 0: Workspace */}
       {step === 0 && (
         <div className="rounded-xl border border-gray-200 bg-white p-8">
-          <h2 className="mb-2 text-xl font-bold text-gray-900">Create your account</h2>
-          <p className="mb-6 text-sm text-gray-600">Start your 14-day free trial. No credit card required.</p>
-          <form onSubmit={accountForm.handleSubmit(handleAccountSubmit)} className="space-y-4">
+          <h2 className="mb-2 text-xl font-bold text-gray-900">Name your workspace</h2>
+          <p className="mb-6 text-sm text-gray-600">This is how your team will recognize your Whistling.io account.</p>
+          <form onSubmit={orgForm.handleSubmit(handleOrgSubmit)} className="space-y-4">
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Full name</label>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Workspace name</label>
               <input
+                placeholder="e.g. Sunrise Coffee Co."
                 className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-900"
-                {...accountForm.register('name')}
+                {...orgForm.register('name')}
               />
-              {accountForm.formState.errors.name && (
-                <p className="mt-1 text-xs text-red-600">{accountForm.formState.errors.name.message}</p>
+              {orgForm.formState.errors.name && (
+                <p className="mt-1 text-xs text-red-600">{orgForm.formState.errors.name.message}</p>
               )}
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Email</label>
-              <input
-                type="email"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-900"
-                {...accountForm.register('email')}
-              />
-              {accountForm.formState.errors.email && (
-                <p className="mt-1 text-xs text-red-600">{accountForm.formState.errors.email.message}</p>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Password</label>
-                <input
-                  type="password"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-900"
-                  {...accountForm.register('password')}
-                />
-                {accountForm.formState.errors.password && (
-                  <p className="mt-1 text-xs text-red-600">{accountForm.formState.errors.password.message}</p>
-                )}
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Confirm password</label>
-                <input
-                  type="password"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-900"
-                  {...accountForm.register('confirmPassword')}
-                />
-                {accountForm.formState.errors.confirmPassword && (
-                  <p className="mt-1 text-xs text-red-600">{accountForm.formState.errors.confirmPassword.message}</p>
-                )}
-              </div>
             </div>
             <button
               type="submit"
               disabled={isSubmitting}
               className="w-full rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60"
             >
-              {isSubmitting ? 'Creating account…' : 'Create account →'}
+              {isSubmitting ? 'Creating…' : 'Continue →'}
             </button>
           </form>
         </div>
@@ -279,9 +243,7 @@ export function OnboardingFlow() {
                 >
                   <option value="">Select a category…</option>
                   {BUSINESS_CATEGORIES.map((c) => (
-                    <option key={c} value={c}>
-                      {CATEGORY_LABELS[c] ?? c}
-                    </option>
+                    <option key={c} value={c}>{CATEGORY_LABELS[c] ?? c}</option>
                   ))}
                 </select>
               </div>
@@ -352,47 +314,64 @@ export function OnboardingFlow() {
           <div className="mb-6 flex items-center gap-3">
             <Globe className="h-5 w-5 text-gray-600" />
             <div>
-              <h2 className="text-xl font-bold text-gray-900">Connect your profiles</h2>
-              <p className="text-sm text-gray-600">We'll pull in your reviews and comments automatically.</p>
+              <h2 className="text-xl font-bold text-gray-900">Connect your review profiles</h2>
+              <p className="text-sm text-gray-600">We'll pull in reviews and comments automatically.</p>
             </div>
           </div>
           <div className="mb-6 space-y-3">
-            {[
-              { type: 'google', label: 'Google Business Profile', icon: '⭐', helpText: 'Connect to pull in all Google reviews' },
-              { type: 'instagram', label: 'Instagram', icon: '📷', helpText: 'Pull comments from your posts' },
-              { type: 'facebook', label: 'Facebook', icon: '👍', helpText: 'Collect page reviews and comments' },
-              { type: 'yelp', label: 'Yelp', icon: '🌟', helpText: 'Add your Yelp business link' },
-            ].map((s) => (
-              <div
-                key={s.type}
-                className="flex items-center justify-between rounded-lg border border-gray-200 p-4"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="text-xl">{s.icon}</span>
-                  <div>
-                    <div className="text-sm font-medium text-gray-900">{s.label}</div>
-                    <div className="text-xs text-gray-500">{s.helpText}</div>
+            {ONBOARDING_SOURCES.map(({ type, label, icon }) => {
+              const cap = SOURCE_CAPABILITIES[type]
+              const isConnected = connectedSources.some((s) => s.type === type)
+              const isUrlMode = cap.mode === 'public_url'
+
+              return (
+                <div key={type} className="rounded-lg border border-gray-200 p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className="text-xl">{icon}</span>
+                      <div>
+                        <div className="text-sm font-medium text-gray-900">{label}</div>
+                        <div className="text-xs text-gray-500">{cap.connectHint}</div>
+                      </div>
+                    </div>
+                    {isConnected ? (
+                      <span className="flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700">
+                        <Check className="h-3 w-3" /> Connected
+                      </span>
+                    ) : isUrlMode ? null : (
+                      <button
+                        type="button"
+                        onClick={() => connectSource(type)}
+                        className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                      >
+                        {cap.connectLabel}
+                      </button>
+                    )}
                   </div>
+                  {isUrlMode && !isConnected && (
+                    <div className="mt-3 flex gap-2">
+                      <input
+                        type="url"
+                        placeholder={cap.urlPlaceholder ?? 'https://'}
+                        value={urlInputs[type] ?? ''}
+                        onChange={(e) => setUrlInputs((prev) => ({ ...prev, [type]: e.target.value }))}
+                        className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-900 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleUrlConnect(type)}
+                        disabled={!urlInputs[type]?.trim()}
+                        className="flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-gray-800"
+                      >
+                        <Link2 className="h-3 w-3" /> Save
+                      </button>
+                    </div>
+                  )}
                 </div>
-                <button
-                  type="button"
-                  className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-                  onClick={() => setSources((prev) => [...prev, { type: s.type, url: '' }])}
-                >
-                  Connect
-                </button>
-              </div>
-            ))}
+              )
+            })}
           </div>
-          <div className="rounded-lg bg-blue-50 p-4 text-sm text-blue-800">
-            <div className="flex items-start gap-2">
-              <Upload className="mt-0.5 h-4 w-4 shrink-0" />
-              <div>
-                <strong>Or upload a CSV</strong> — you can import existing review exports from any platform. We'll analyze them immediately.
-              </div>
-            </div>
-          </div>
-          <div className="mt-6 flex gap-3">
+          <div className="flex gap-3">
             <button
               type="button"
               onClick={() => setStep(3)}
@@ -402,7 +381,7 @@ export function OnboardingFlow() {
             </button>
             <button
               type="button"
-              onClick={handleSourcesSubmit}
+              onClick={() => setStep(3)}
               className="flex-1 rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-gray-800"
             >
               Continue →
@@ -419,7 +398,7 @@ export function OnboardingFlow() {
             <div>
               <h2 className="text-xl font-bold text-gray-900">Add your competitors</h2>
               <p className="text-sm text-gray-600">
-                This is what makes Whistling.io different from basic review tools. We'll track what customers say about them too.
+                We'll track what customers say about them too — that's what makes Whistling.io different.
               </p>
             </div>
           </div>
@@ -430,9 +409,7 @@ export function OnboardingFlow() {
                   placeholder="Competitor name"
                   value={comp.name}
                   onChange={(e) =>
-                    setCompetitors((prev) =>
-                      prev.map((c, j) => (j === i ? { ...c, name: e.target.value } : c)),
-                    )
+                    setCompetitors((prev) => prev.map((c, j) => (j === i ? { ...c, name: e.target.value } : c)))
                   }
                   className="rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-gray-900 focus:outline-none"
                 />
@@ -440,9 +417,7 @@ export function OnboardingFlow() {
                   placeholder="Google Maps link (optional)"
                   value={comp.googleUrl}
                   onChange={(e) =>
-                    setCompetitors((prev) =>
-                      prev.map((c, j) => (j === i ? { ...c, googleUrl: e.target.value } : c)),
-                    )
+                    setCompetitors((prev) => prev.map((c, j) => (j === i ? { ...c, googleUrl: e.target.value } : c)))
                   }
                   className="rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-gray-900 focus:outline-none"
                 />
@@ -459,9 +434,16 @@ export function OnboardingFlow() {
           <div className="flex gap-3">
             <button
               type="button"
+              onClick={() => router.push(`/dashboard${businessId ? `?businessId=${businessId}` : ''}`)}
+              className="rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Skip for now
+            </button>
+            <button
+              type="button"
               onClick={handleCompetitorsSubmit}
               disabled={isSubmitting}
-              className="w-full rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60"
+              className="flex-1 rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60"
             >
               {isSubmitting ? 'Setting up your dashboard…' : 'Build my intelligence map →'}
             </button>

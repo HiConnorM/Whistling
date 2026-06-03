@@ -1,0 +1,152 @@
+import type { SourceType } from './enums.js'
+
+export interface SourceCapability {
+  mode: 'oauth' | 'api_key' | 'public_url' | 'csv' | 'manual' | 'provider'
+  ownedData: boolean
+  competitorData: 'none' | 'limited' | 'public' | 'provider'
+  supportsReviews: boolean
+  supportsComments: boolean
+  supportsReplies: boolean
+  scanFrequency: 'realtime' | 'hourly' | 'daily' | 'weekly' | 'manual'
+  requiresAppReview: boolean
+  connectLabel: string
+  connectHint: string
+  urlPlaceholder?: string
+}
+
+export const SOURCE_CAPABILITIES: Record<SourceType, SourceCapability> = {
+  google: {
+    mode: 'oauth',
+    ownedData: true,
+    competitorData: 'limited',
+    supportsReviews: true,
+    supportsComments: false,
+    supportsReplies: true,
+    scanFrequency: 'daily',
+    requiresAppReview: false,
+    connectLabel: 'Connect with Google',
+    connectHint: 'Pulls all Google reviews for your verified business location',
+  },
+  instagram: {
+    mode: 'oauth',
+    ownedData: true,
+    competitorData: 'public',
+    supportsReviews: false,
+    supportsComments: true,
+    supportsReplies: false,
+    scanFrequency: 'daily',
+    requiresAppReview: true,
+    connectLabel: 'Connect with Meta',
+    connectHint: 'Pulls comments from your Instagram business posts',
+  },
+  facebook: {
+    mode: 'oauth',
+    ownedData: true,
+    competitorData: 'public',
+    supportsReviews: true,
+    supportsComments: true,
+    supportsReplies: false,
+    scanFrequency: 'daily',
+    requiresAppReview: true,
+    connectLabel: 'Connect with Meta',
+    connectHint: 'Collects page reviews and post comments',
+  },
+  youtube: {
+    mode: 'oauth',
+    ownedData: true,
+    competitorData: 'public',
+    supportsReviews: false,
+    supportsComments: true,
+    supportsReplies: true,
+    scanFrequency: 'daily',
+    requiresAppReview: false,
+    connectLabel: 'Connect YouTube channel',
+    connectHint: 'Analyzes comments across your videos',
+  },
+  tiktok: {
+    mode: 'oauth',
+    ownedData: true,
+    competitorData: 'limited',
+    supportsReviews: false,
+    supportsComments: true,
+    supportsReplies: false,
+    scanFrequency: 'daily',
+    requiresAppReview: true,
+    connectLabel: 'Connect TikTok',
+    connectHint: 'Pulls comments from your TikTok videos',
+  },
+  yelp: {
+    mode: 'public_url',
+    ownedData: false,
+    competitorData: 'public',
+    supportsReviews: true,
+    supportsComments: false,
+    supportsReplies: false,
+    scanFrequency: 'weekly',
+    requiresAppReview: false,
+    connectLabel: 'Add Yelp URL',
+    connectHint: 'Paste your Yelp business profile link',
+    urlPlaceholder: 'https://www.yelp.com/biz/your-business',
+  },
+  tripadvisor: {
+    mode: 'public_url',
+    ownedData: false,
+    competitorData: 'public',
+    supportsReviews: true,
+    supportsComments: false,
+    supportsReplies: false,
+    scanFrequency: 'weekly',
+    requiresAppReview: false,
+    connectLabel: 'Add TripAdvisor URL',
+    connectHint: 'Paste your TripAdvisor listing link',
+    urlPlaceholder: 'https://www.tripadvisor.com/Restaurant_Review-...',
+  },
+  csv: {
+    mode: 'csv',
+    ownedData: true,
+    competitorData: 'none',
+    supportsReviews: true,
+    supportsComments: true,
+    supportsReplies: false,
+    scanFrequency: 'manual',
+    requiresAppReview: false,
+    connectLabel: 'Upload CSV file',
+    connectHint: 'Import exported reviews from any platform',
+  },
+  website_form: {
+    mode: 'api_key',
+    ownedData: true,
+    competitorData: 'none',
+    supportsReviews: false,
+    supportsComments: true,
+    supportsReplies: false,
+    scanFrequency: 'realtime',
+    requiresAppReview: false,
+    connectLabel: 'Install form endpoint',
+    connectHint: 'Add a snippet to your contact form to capture feedback',
+  },
+  email_inbox: {
+    mode: 'oauth',
+    ownedData: true,
+    competitorData: 'none',
+    supportsReviews: false,
+    supportsComments: true,
+    supportsReplies: false,
+    scanFrequency: 'hourly',
+    requiresAppReview: false,
+    connectLabel: 'Connect email inbox',
+    connectHint: 'Analyze customer emails and replies',
+  },
+  manual: {
+    mode: 'manual',
+    ownedData: true,
+    competitorData: 'none',
+    supportsReviews: true,
+    supportsComments: true,
+    supportsReplies: false,
+    scanFrequency: 'manual',
+    requiresAppReview: false,
+    connectLabel: 'Paste text',
+    connectHint: 'Manually add reviews or comments for analysis',
+  },
+}
