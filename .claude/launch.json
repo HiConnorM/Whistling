@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-lc",
+        "export NVM_DIR=\"$HOME/.nvm\" && . \"$NVM_DIR/nvm.sh\" && nvm use 20 >/dev/null 2>&1 && cd apps/web && exec pnpm exec next dev -p 3940"
+      ],
+      "port": 3940
+    }
+  ]
+}

@@ -26,5 +26,10 @@
     "node": ">=20.0.0",
     "pnpm": ">=10.0.0"
   },
-  "packageManager": "pnpm@10.33.2"
+  "packageManager": "pnpm@10.33.2",
+  "pnpm": {
+    "patchedDependencies": {
+      "kysely@0.29.2": "patches/kysely@0.29.2.patch"
+    }
+  }
 }
