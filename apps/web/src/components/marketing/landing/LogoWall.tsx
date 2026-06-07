@@ -7,7 +7,7 @@ export function LogoWall() {
     <section className="border-y border-border py-12">
       <Container>
         <p className="text-center text-sm text-muted-foreground">
-          Pulls from the platforms your customers already use
+          Pulls from every platform where customers leave feedback
         </p>
       </Container>
 

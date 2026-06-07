@@ -137,25 +137,6 @@ export function applyRecommendationRules(
   for (const stat of competitorStats) {
     const ratio = stat.competitorMentionCount / Math.max(stat.ownMentionCount, 1)
 
-    if (
-      stat.competitorSentiment === 'positive' &&
-      ratio >= 2 &&
-      stat.topic.toLowerCase().includes('online ordering')
-    ) {
-      recommendations.push({
-        title: 'Add or promote online ordering — competitors are winning here',
-        category: 'website',
-        priority: 'high',
-        evidencePoints: [
-          `Competitors receive ${stat.competitorMentionCount} positive mentions for online ordering`,
-          `You have only ${stat.ownMentionCount} mentions of this feature`,
-          'This is a clear competitive gap',
-        ],
-        relatedTopics: [stat.topic],
-        difficulty: 'medium',
-      })
-    }
-
     if (stat.competitorSentiment === 'positive' && ratio >= 2) {
       recommendations.push({
         title: `Bridge the gap on: ${stat.topic}`,

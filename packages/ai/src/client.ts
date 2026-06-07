@@ -12,8 +12,9 @@ export function getOpenAIClient(): OpenAI {
 }
 
 export const MODELS = {
-  CLASSIFICATION: 'gpt-4o-mini',
-  EMBEDDING: 'text-embedding-3-small',
-  REPORT: 'gpt-4o',
-  SUMMARY: 'gpt-4o-mini',
+  CLASSIFICATION: process.env['OPENAI_CLASSIFICATION_MODEL'] ?? 'gpt-4o-mini',
+  EMBEDDING: process.env['OPENAI_EMBEDDING_MODEL'] ?? 'text-embedding-3-small',
+  REPORT: process.env['OPENAI_REPORT_MODEL'] ?? 'gpt-4o-mini',
+  SUMMARY: process.env['OPENAI_CHAT_MODEL'] ?? 'gpt-4o-mini',
+  RESPONDER: process.env['OPENAI_RESPONDER_MODEL'] ?? 'gpt-4o-mini',
 } as const

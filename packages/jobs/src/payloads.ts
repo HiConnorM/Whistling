@@ -15,6 +15,19 @@ export const normalizeRawItemPayload = z.object({
   businessId: z.string(),
 })
 
+export const collectApifyRunPayload = z.object({
+  providerRunId: z.string(),
+  apifyRunId: z.string(),
+  datasetId: z.string(),
+  sourceId: z.string(),
+  businessId: z.string(),
+  organizationId: z.string(),
+  actorKey: z.string(),
+  maxItems: z.number().int().positive(),
+  periodStart: z.string().datetime(),
+  attempt: z.number().int().default(0),
+})
+
 // ─── Analysis Queue ───────────────────────────────────────────────────────────
 
 export const classifyMentionPayload = z.object({
@@ -93,6 +106,7 @@ export const refreshSourceTokenPayload = z.object({
 
 export type ScanSourcePayload = z.infer<typeof scanSourcePayload>
 export type NormalizeRawItemPayload = z.infer<typeof normalizeRawItemPayload>
+export type CollectApifyRunPayload = z.infer<typeof collectApifyRunPayload>
 export type ClassifyMentionPayload = z.infer<typeof classifyMentionPayload>
 export type ClassifyMentionsBatchPayload = z.infer<typeof classifyMentionsBatchPayload>
 export type EmbedMentionPayload = z.infer<typeof embedMentionPayload>

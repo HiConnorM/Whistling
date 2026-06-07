@@ -19,25 +19,41 @@ const classificationSchema = z.object({
 
 export type Classification = z.infer<typeof classificationSchema>
 
-const SYSTEM_PROMPT = `You are an expert customer feedback analyst for local businesses.
+export interface ClassificationWithUsage {
+  result: Classification
+  inputTokens: number
+  outputTokens: number
+}
+
+export interface BatchClassificationResult {
+  results: Map<string, Classification>
+  totalInputTokens: number
+  totalOutputTokens: number
+}
+
+const SYSTEM_PROMPT = `You are an expert customer feedback analyst. You work with businesses of all types — restaurants, clinics, salons, gyms, law firms, SaaS products, e-commerce stores, mobile apps, contractors, hotels, and more.
 Analyze customer reviews and comments with high precision. Extract structured intelligence.
 
 Key guidelines:
+- sentiment: one of POSITIVE, NEUTRAL, NEGATIVE, MIXED
+- sentimentScore: float from -1.0 (most negative) to 1.0 (most positive)
 - severity: how severe/negative (1=mild, 5=critical business threat)
 - urgency: how quickly it needs addressing (1=can wait, 5=immediate action)
 - actionability: how actionable for the business owner (1=nothing to do, 5=clear action)
-- topics: specific aspects mentioned (e.g., "wait time", "parking", "patio", "margaritas")
-- businessArea: the main operational area (e.g., "kitchen", "front-of-house", "online presence")
+- topics: specific aspects mentioned (e.g., "wait time", "booking process", "product quality", "customer support", "onboarding")
+- businessArea: the main operational area for this business type (e.g., "online presence", "customer service", "operations", "product", "staff")
 - containsPII: true if review contains real personal names, phone numbers, or identifiable info beyond reviewer name
 - isSpam: true if this looks like a fake or spam review
 
-Return ONLY valid JSON matching the schema. No markdown, no explanation.`
+Return ONLY valid JSON. No markdown, no explanation.`
+
+// ── Single classification ─────────────────────────────────────────────────────
 
 export async function classifyMention(
   text: string,
   rating?: number | null,
   businessCategory?: string,
-): Promise<Classification> {
+): Promise<ClassificationWithUsage> {
   const client = getOpenAIClient()
 
   const userContent = [
@@ -63,25 +79,140 @@ export async function classifyMention(
   if (!content) throw new Error('Empty classification response')
 
   const parsed = JSON.parse(content) as unknown
-  return classificationSchema.parse(parsed)
+  const result = classificationSchema.parse(parsed)
+
+  return {
+    result,
+    inputTokens: response.usage?.prompt_tokens ?? 0,
+    outputTokens: response.usage?.completion_tokens ?? 0,
+  }
 }
+
+// ── True batch classification (single API call for up to ~30 items) ───────────
+// Formats all items in one prompt; response is a JSON object keyed by item index.
+// Falls back to parallel individual calls if batch fails.
+
+const BATCH_RESULT_SCHEMA = z.object({
+  items: z.array(
+    classificationSchema.extend({ _idx: z.number().int() }),
+  ),
+})
 
 export async function classifyMentionsBatch(
   mentions: Array<{ id: string; text: string; rating?: number | null }>,
   businessCategory?: string,
-): Promise<Map<string, Classification>> {
+): Promise<BatchClassificationResult> {
+  if (mentions.length === 0) {
+    return { results: new Map(), totalInputTokens: 0, totalOutputTokens: 0 }
+  }
+
+  // For very small batches, single call is fine; larger batches still work but
+  // we chunk at 25 to keep prompt size under ~8k tokens.
+  const CHUNK_SIZE = 25
   const results = new Map<string, Classification>()
+  let totalInputTokens = 0
+  let totalOutputTokens = 0
 
-  await Promise.all(
-    mentions.map(async ({ id, text, rating }) => {
-      try {
-        const result = await classifyMention(text, rating, businessCategory)
-        results.set(id, result)
-      } catch (err) {
-        console.error(`Failed to classify mention ${id}:`, err)
+  for (let i = 0; i < mentions.length; i += CHUNK_SIZE) {
+    const chunk = mentions.slice(i, i + CHUNK_SIZE)
+    const { results: chunkResults, inputTokens, outputTokens } =
+      await classifyChunk(chunk, businessCategory)
+
+    for (const [id, cls] of chunkResults.entries()) {
+      results.set(id, cls)
+    }
+    totalInputTokens += inputTokens
+    totalOutputTokens += outputTokens
+  }
+
+  return { results, totalInputTokens, totalOutputTokens }
+}
+
+async function classifyChunk(
+  mentions: Array<{ id: string; text: string; rating?: number | null }>,
+  businessCategory?: string,
+): Promise<{ results: Map<string, Classification>; inputTokens: number; outputTokens: number }> {
+  const client = getOpenAIClient()
+
+  const lines = mentions.map((m, idx) => {
+    const ratingLine = m.rating ? `[Rating: ${m.rating}/5] ` : ''
+    return `${idx}: ${ratingLine}${m.text.slice(0, 800)}`
+  })
+
+  const userContent = [
+    businessCategory ? `Business type: ${businessCategory}` : null,
+    `Classify each of the following ${mentions.length} reviews. Return a JSON object with an "items" array. Each element must include "_idx" (the integer index from the list) plus all classification fields.`,
+    '',
+    ...lines,
+  ]
+    .filter((l) => l !== null)
+    .join('\n')
+
+  try {
+    const response = await client.chat.completions.create({
+      model: MODELS.CLASSIFICATION,
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: userContent },
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.1,
+      max_tokens: 500 * mentions.length,
+    })
+
+    const content = response.choices[0]?.message?.content
+    if (!content) throw new Error('Empty batch response')
+
+    const parsed = BATCH_RESULT_SCHEMA.parse(JSON.parse(content))
+    const results = new Map<string, Classification>()
+
+    for (const item of parsed.items) {
+      const { _idx, ...classification } = item
+      const mention = mentions[_idx]
+      if (mention) {
+        results.set(mention.id, classification)
       }
-    }),
-  )
+    }
 
-  return results
+    return {
+      results,
+      inputTokens: response.usage?.prompt_tokens ?? 0,
+      outputTokens: response.usage?.completion_tokens ?? 0,
+    }
+  } catch {
+    // Fallback: classify individually
+    const results = new Map<string, Classification>()
+    let inputTokens = 0
+    let outputTokens = 0
+
+    await Promise.all(
+      mentions.map(async (m) => {
+        try {
+          const { result, inputTokens: it, outputTokens: ot } =
+            await classifyMention(m.text, m.rating, businessCategory)
+          results.set(m.id, result)
+          inputTokens += it
+          outputTokens += ot
+        } catch (err) {
+          console.error(`[classify] Failed for mention ${m.id}:`, err)
+        }
+      }),
+    )
+
+    return { results, inputTokens, outputTokens }
+  }
+}
+
+/** Estimate tokens for a batch without calling the API. Used for cost pre-checks. */
+export function estimateClassificationTokens(
+  textLengths: number[],
+): { inputTokens: number; outputTokens: number } {
+  const avgCharsPerToken = 4
+  const systemTokens = Math.ceil(SYSTEM_PROMPT.length / avgCharsPerToken)
+  const inputTokens = textLengths.reduce(
+    (sum, len) => sum + Math.ceil(len / avgCharsPerToken),
+    systemTokens,
+  )
+  const outputTokens = textLengths.length * 120 // ~120 tokens per classification output
+  return { inputTokens, outputTokens }
 }

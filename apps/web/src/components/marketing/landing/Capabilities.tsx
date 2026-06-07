@@ -27,7 +27,7 @@ const CAPABILITIES: Capability[] = [
     body: 'A Monday email that reads like a sharp advisor. The win, the risk, and the one move worth making.',
     visual: (
       <div className="w-full space-y-2.5">
-        {['Patio mentions up 27%', 'Friday wait times climbing', 'Open a pickup station'].map(
+        {['5-star mentions up 31%', 'Booking friction complaints rising', 'Reply to 4 unanswered reviews'].map(
           (line) => (
             <div key={line} className="flex items-center gap-2.5 text-sm text-foreground">
               <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />
@@ -85,7 +85,7 @@ const CAPABILITIES: Capability[] = [
     body: 'Not "improve service." Instead: a specific, testable move tied to what the data just showed.',
     visual: (
       <div className="w-full space-y-3">
-        {['Test a Friday pickup lane', 'Reply to the 3 newest 2-star reviews'].map((rec) => (
+        {['Add evening appointment slots', 'Reply to the 4 newest 2-star reviews'].map((rec) => (
           <div
             key={rec}
             className="flex items-center gap-3 rounded-lg border border-border bg-card px-3.5 py-3 text-sm text-foreground"
@@ -112,8 +112,8 @@ export function Capabilities() {
               Five signals, one weekly read.
             </h2>
             <p className="mt-5 max-w-xl text-lg leading-relaxed text-muted-foreground">
-              Everything a brand team watches, distilled for a business owner who has a floor to run.
-              Scroll across to see each one.
+              Everything an enterprise intelligence team watches, distilled for the owner who is also
+              doing the work. Scroll across to see each one.
             </p>
           </Reveal>
         </Container>

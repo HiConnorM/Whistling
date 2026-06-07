@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
-import { getLatestPulseScore, getPulseHistory, getTopTopics, getLatestReport } from '@whistling/db'
-import { getMentionStats } from '@whistling/db'
+import { getLatestPulseScore, getPulseHistory, getTopTopics, getLatestReport, getMentionStats } from '@whistling/db'
+import { getPlanLimits } from '@whistling/domain'
 
 export async function dashboardRoutes(app: FastifyInstance) {
   app.get<{ Params: { businessId: string } }>(
@@ -23,6 +23,11 @@ export async function dashboardRoutes(app: FastifyInstance) {
       const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
       const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000)
 
+      const sub = await app.db.subscription.findUnique({
+        where: { organizationId },
+        select: { plan: true, status: true, currentPeriodStart: true, currentPeriodEnd: true },
+      })
+
       const [
         pulseScore,
         pulseHistory,
@@ -32,6 +37,8 @@ export async function dashboardRoutes(app: FastifyInstance) {
         latestReport,
         pendingRecommendations,
         sourceHealth,
+        recentProviderRuns,
+        usageLedger,
       ] = await Promise.all([
         getLatestPulseScore(app.db, businessId),
         getPulseHistory(app.db, businessId, 30),
@@ -56,7 +63,49 @@ export async function dashboardRoutes(app: FastifyInstance) {
             errorMessage: true,
           },
         }),
+        app.db.providerRun.findMany({
+          where: { businessId, startedAt: { gte: weekAgo } },
+          orderBy: { startedAt: 'desc' },
+          take: 10,
+          select: {
+            id: true,
+            actorId: true,
+            status: true,
+            collectedItems: true,
+            startedAt: true,
+            finishedAt: true,
+            errorMessage: true,
+          },
+        }),
+        sub?.currentPeriodStart
+          ? app.db.usageLedger.findUnique({
+              where: {
+                organizationId_periodStart: {
+                  organizationId,
+                  periodStart: sub.currentPeriodStart,
+                },
+              },
+            })
+          : Promise.resolve(null),
       ])
+
+      const limits = sub ? getPlanLimits(sub.plan) : null
+
+      // Derive scan state for empty-state UX
+      const hasAnySources = sourceHealth.length > 0
+      const hasAnyMentions = (currentStats?.total ?? 0) > 0
+      const activeRun = recentProviderRuns.find((r) => r.status === 'RUNNING' || r.status === 'PENDING')
+      const lastFailedRun = recentProviderRuns.find((r) => r.status === 'FAILED')
+
+      const scanState = !hasAnySources
+        ? 'no_sources'
+        : activeRun
+          ? 'scanning'
+          : !hasAnyMentions
+            ? lastFailedRun
+              ? 'scan_failed'
+              : 'scan_queued'
+            : 'ready'
 
       return {
         business,
@@ -79,6 +128,22 @@ export async function dashboardRoutes(app: FastifyInstance) {
           : null,
         recommendations: pendingRecommendations,
         sourceHealth,
+        scanState,
+        recentProviderRuns,
+        usage: usageLedger && limits
+          ? {
+              signalsUsed: usageLedger.collectedSignals,
+              signalsLimit: limits.signalsPerMonth,
+              apifyRunsUsed: usageLedger.apifyRuns,
+              apifyRunsLimit: limits.apifyRunsPerMonth,
+              responderDraftsUsed: usageLedger.responderDrafts,
+              responderDraftsLimit: limits.responderDraftsPerMonth,
+              estimatedCostCents: usageLedger.estimatedTotalCostCents,
+              hardStopCents: limits.hardStopCents,
+              periodStart: usageLedger.periodStart,
+              periodEnd: usageLedger.periodEnd,
+            }
+          : null,
       }
     },
   )

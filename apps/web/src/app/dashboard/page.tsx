@@ -42,9 +42,9 @@ async function DashboardContent() {
         <PulseScoreCard score={82} previous={76} />
         <div className="col-span-3">
           <KeyInsightCards
-            biggestWin="Patio mentions increased 27% this week. Customers are connecting you with atmosphere and live music — your strongest differentiator right now."
-            biggestRisk="Wait-time complaints increased 18%, mostly on Friday evenings between 6–9pm."
-            bestAction="Set up a dedicated Friday pickup station. Three nearby competitors are being praised for fast takeout while your dine-in overflow creates friction."
+            biggestWin="Staff attentiveness mentions increased 22% this week. Customers are connecting you with personalized care — your strongest differentiator right now."
+            biggestRisk="Online booking complaints increased 18%, mostly from new patients trying to schedule an initial visit."
+            bestAction="Fix the intake form or add a direct-call CTA. Eleven reviews mention difficulty booking online — two nearby competitors are winning on 'easy scheduling.'"
           />
         </div>
       </div>
@@ -64,20 +64,20 @@ async function DashboardContent() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <TopComplaintsCard
           complaints={[
-            { topic: 'Wait time', count: 22, change: 18 },
-            { topic: 'Parking', count: 14, change: -5 },
-            { topic: 'Margarita consistency', count: 9, change: 3 },
-            { topic: 'Price confusion', count: 7, change: 0 },
-            { topic: 'Noise level', count: 5, change: -8 },
+            { topic: 'Online booking friction', count: 22, change: 18 },
+            { topic: 'Wait after check-in', count: 14, change: 4 },
+            { topic: 'Insurance billing questions', count: 9, change: -3 },
+            { topic: 'Parking availability', count: 7, change: 0 },
+            { topic: 'After-hours access', count: 5, change: -6 },
           ]}
         />
         <TopPraisesCard
           praises={[
-            { topic: 'Patio atmosphere', count: 41, change: 27 },
-            { topic: 'Staff friendliness', count: 38, change: 5 },
-            { topic: 'Fajitas', count: 29, change: 12 },
-            { topic: 'Live music nights', count: 24, change: 19 },
-            { topic: 'Value for money', count: 18, change: -2 },
+            { topic: 'Staff attentiveness', count: 41, change: 22 },
+            { topic: 'Treatment results', count: 38, change: 18 },
+            { topic: 'Appointment flexibility', count: 29, change: 8 },
+            { topic: 'Clean facility', count: 24, change: 5 },
+            { topic: 'Clear communication', count: 18, change: 11 },
           ]}
         />
       </div>
@@ -89,30 +89,30 @@ async function DashboardContent() {
             recommendations={[
               {
                 id: '1',
-                title: 'Reduce Friday wait-time complaints',
-                category: 'operations',
+                title: 'Simplify the online booking flow',
+                category: 'website',
                 priority: 'high',
-                why: 'Wait-time complaints are up 18% and concentrated on Friday evenings. Three competitor reviews specifically praise pickup speed.',
+                why: 'Booking complaints are up 18% and cluster around new patients. Two competitors are winning on "easy scheduling."',
                 difficulty: 'medium',
-                suggestedTimeline: 'Test for 2 Fridays',
+                suggestedTimeline: 'This week',
               },
               {
                 id: '2',
-                title: 'Amplify your patio advantage in marketing',
+                title: 'Promote treatment results in your marketing',
                 category: 'marketing',
                 priority: 'medium',
-                why: 'Patio is mentioned positively 41 times this week — more than any other single topic. No competitor is winning on atmosphere.',
+                why: 'Treatment outcomes are mentioned positively 38 times this week — your strongest differentiator. No competitor is owning this message.',
                 difficulty: 'easy',
                 suggestedTimeline: 'This week',
               },
               {
                 id: '3',
-                title: 'Add or promote online ordering',
-                category: 'website',
+                title: 'Add evening and Saturday appointment slots',
+                category: 'operations',
                 priority: 'high',
-                why: 'Nearby competitors receive 3x more positive mentions for online ordering than you. Customers are asking for it explicitly.',
+                why: 'Eleven reviews mention scheduling difficulty, and eight specifically ask about evening or weekend availability.',
                 difficulty: 'medium',
-                suggestedTimeline: '2–4 weeks',
+                suggestedTimeline: '1–2 weeks',
               },
             ]}
           />

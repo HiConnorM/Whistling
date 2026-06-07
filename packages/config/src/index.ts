@@ -17,11 +17,17 @@ const serverEnvSchema = z.object({
   STRIPE_SECRET_KEY: z.string().startsWith('sk_'),
   STRIPE_WEBHOOK_SECRET: z.string().startsWith('whsec_'),
 
+  // Apify
+  APIFY_API_TOKEN: z.string().optional(),
+  APIFY_WEBHOOK_SECRET: z.string().optional(),
+
   // OpenAI
-  OPENAI_API_KEY: z.string().startsWith('sk-'),
+  OPENAI_API_KEY: z.string().startsWith('sk-').optional(),
   OPENAI_EMBEDDING_MODEL: z.string().default('text-embedding-3-small'),
   OPENAI_CHAT_MODEL: z.string().default('gpt-4o-mini'),
-  OPENAI_REPORT_MODEL: z.string().default('gpt-4o'),
+  OPENAI_REPORT_MODEL: z.string().default('gpt-4o-mini'),
+  OPENAI_RESPONDER_MODEL: z.string().default('gpt-4o-mini'),
+  OPENAI_CLASSIFICATION_MODEL: z.string().default('gpt-4o-mini'),
 
   // Resend
   RESEND_API_KEY: z.string().startsWith('re_'),

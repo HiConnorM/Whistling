@@ -8,7 +8,7 @@ const STEPS = [
   {
     icon: Plug,
     title: 'Connect your sources',
-    body: 'Add your Google, Facebook, Instagram, and Yelp profiles, then name a few nearby competitors. Two minutes, no code.',
+    body: 'Add your Google, Yelp, Trustpilot, App Store, or Amazon profiles — wherever your customers already leave feedback. Name a few competitors. Two minutes, no code.',
   },
   {
     icon: Activity,

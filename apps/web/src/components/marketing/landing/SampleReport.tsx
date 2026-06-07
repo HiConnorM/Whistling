@@ -17,27 +17,27 @@ function ReportCard({ tag, children }: { tag: string; children: ReactNode }) {
 }
 
 const LOVED = [
-  { topic: 'Patio atmosphere', mentions: 34, change: 27 },
-  { topic: 'Live music nights', mentions: 21, change: 12 },
-  { topic: 'Friendly servers', mentions: 18, change: 4 },
+  { topic: 'Food quality', mentions: 47, change: 19 },
+  { topic: 'Weekend atmosphere', mentions: 33, change: 24 },
+  { topic: 'Staff friendliness', mentions: 28, change: 11 },
 ]
 
 const WATCH = [
-  { topic: 'Friday wait times', note: 'Rising', weight: 0.9 },
-  { topic: 'Online ordering glitches', note: 'Steady', weight: 0.55 },
-  { topic: 'Parking near the patio', note: 'Low', weight: 0.3 },
+  { topic: 'Friday wait times', note: 'Rising', weight: 0.88 },
+  { topic: 'Online reservation friction', note: 'Steady', weight: 0.52 },
+  { topic: 'Parking on busy nights', note: 'Low', weight: 0.28 },
 ]
 
 const CARDS: ReactNode[] = [
   <ReportCard key="pulse" tag="Pulse">
     <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-center sm:gap-8">
-      <PulseRing score={82} delta={6} size="lg" />
+      <PulseRing score={87} delta={9} size="lg" />
       <div>
         <h3 className="font-display text-2xl font-semibold tracking-tight text-foreground">
-          Your patio is carrying the week.
+          Your atmosphere is your edge.
         </h3>
         <p className="mt-3 leading-relaxed text-muted-foreground">
-          Up six points, driven by warmer weather and a run of strong weekend reviews. The number
+          Up nine points this month — driven by a surge of weekend-vibe reviews. The number
           you watch, on one honest scale.
         </p>
       </div>
@@ -86,11 +86,12 @@ const CARDS: ReactNode[] = [
       </span>
       <div>
         <h3 className="font-display text-2xl font-semibold tracking-tight text-foreground">
-          Open a Friday pickup station.
+          Add a reservation widget to your Google profile.
         </h3>
         <p className="mt-3 leading-relaxed text-muted-foreground">
-          Wait-time complaints climbed 18% in the 6 to 9pm window, and three nearby spots are getting
-          praised for fast takeout. Test it for two weekends and we will tell you if it moved.
+          Fourteen reviews in the last 30 days mention struggling to book online, and two
+          nearby spots are winning on "easy reservations." A visible booking link on Google
+          could recover those walk-ins before they pick somewhere else.
         </p>
       </div>
     </div>

@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { useRouter } from 'next/navigation'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { Check, ChevronRight, Building2, Globe, Users, Link2, ArrowRight, Plus } from 'lucide-react'
-import { BUSINESS_CATEGORIES, SOURCE_CAPABILITIES } from '@whistling/domain'
+import { BUSINESS_CATEGORIES, BUSINESS_CATEGORY_GROUPS, SOURCE_CAPABILITIES } from '@whistling/domain'
 import { cn } from '@/lib/utils'
 import {
   GoogleMark,
@@ -15,7 +15,13 @@ import {
   TripadvisorMark,
   InstagramMark,
   FacebookMark,
+  TrustpilotMark,
+  AmazonMark,
+  ShopifyMark,
+  AppStoreMark,
 } from '@/components/marketing/landing/BrandLogos'
+
+// ─── Step IDs ────────────────────────────────────────────────────────────────
 
 const STEPS = [
   { id: 'org', label: 'Workspace' },
@@ -23,6 +29,8 @@ const STEPS = [
   { id: 'sources', label: 'Connect sources' },
   { id: 'competitors', label: 'Add competitors' },
 ]
+
+// ─── Schemas ─────────────────────────────────────────────────────────────────
 
 const orgSchema = z.object({
   name: z.string().min(2, 'Workspace name required'),
@@ -39,30 +47,121 @@ const businessSchema = z.object({
 type OrgData = z.infer<typeof orgSchema>
 type BusinessData = z.infer<typeof businessSchema>
 
+// ─── Category labels ──────────────────────────────────────────────────────────
+
 const CATEGORY_LABELS: Record<string, string> = {
-  restaurant: 'Restaurant', cafe: 'Café', bar: 'Bar', retail: 'Retail store',
-  health_wellness: 'Health & wellness', beauty_salon: 'Beauty salon',
-  medical_dental: 'Medical / dental', home_services: 'Home services',
-  fitness_gym: 'Fitness / gym', hospitality: 'Hospitality / hotel',
-  professional_services: 'Professional services', auto_services: 'Auto services',
-  pet_services: 'Pet services', education: 'Education', entertainment: 'Entertainment',
+  // Food & Beverage
+  restaurant: 'Restaurant', cafe: 'Café', bar: 'Bar / Nightclub',
+  coffee_shop: 'Coffee Shop', bakery: 'Bakery', food_truck: 'Food Truck', catering: 'Catering',
+  // Fitness & Wellness
+  gym_fitness: 'Gym / Fitness Studio', yoga_studio: 'Yoga / Pilates Studio', martial_arts: 'Martial Arts Studio',
+  // Beauty & Personal Care
+  hair_salon: 'Hair Salon', barber_shop: 'Barber Shop', spa: 'Spa', med_spa: 'Med Spa',
+  nail_salon: 'Nail Salon', tattoo_shop: 'Tattoo & Piercing',
+  // Pet Services
+  veterinarian: 'Veterinarian', pet_grooming: 'Pet Grooming', pet_boarding: 'Pet Boarding & Daycare',
+  // Auto Services
+  auto_repair: 'Auto Repair / Mechanic', car_wash: 'Car Wash & Detailing', auto_dealership: 'Auto Dealership',
+  // Home & Trade Services
+  plumbing: 'Plumbing', electrical: 'Electrical', hvac: 'HVAC', roofing: 'Roofing',
+  landscaping: 'Landscaping & Lawn Care', cleaning_services: 'Cleaning Services',
+  moving_company: 'Moving Company', general_contractor: 'General Contractor',
+  // Healthcare
+  dental: 'Dental Office', chiropractic: 'Chiropractic', physical_therapy: 'Physical Therapy',
+  mental_health: 'Therapy / Counseling', primary_care: 'Primary Care', urgent_care: 'Urgent Care',
+  dermatology: 'Dermatology', vision_care: 'Vision / Eye Care', wellness_clinic: 'Wellness Clinic',
+  // Hospitality & Experiences
+  hotel: 'Hotel / Boutique Inn', event_venue: 'Event & Wedding Venue',
+  golf_country_club: 'Golf Course / Country Club', entertainment_attraction: 'Entertainment & Attraction',
+  tour_travel: 'Tour & Travel Company',
+  // Retail
+  boutique: 'Boutique / Clothing', specialty_retail: 'Specialty Retail', jewelry_store: 'Jewelry Store',
+  furniture_home: 'Furniture & Home Décor', florist: 'Florist', sporting_goods: 'Sporting Goods',
+  bookstore: 'Bookstore & Gift Shop',
+  // Professional Services
+  law_firm: 'Law Firm', accounting_tax: 'Accounting & Tax', real_estate: 'Real Estate',
+  insurance_agency: 'Insurance Agency', marketing_agency: 'Marketing Agency',
+  consulting: 'Consulting', architecture_design: 'Architecture & Design',
+  // Education & Childcare
+  daycare_preschool: 'Daycare & Preschool', tutoring_center: 'Tutoring Center',
+  music_dance_arts: 'Music, Dance & Arts School', trade_vocational_school: 'Trade & Vocational School',
+  // Online & Digital
+  ecommerce: 'eCommerce / Online Store', saas_software: 'SaaS / Software',
+  mobile_app: 'Mobile App', online_course_community: 'Online Courses & Community',
+  creator_brand: 'Creator / Brand',
+  // Legacy
+  retail: 'Retail', health_wellness: 'Health & Wellness', beauty_salon: 'Beauty Salon',
+  medical_dental: 'Medical / Dental', home_services: 'Home Services', fitness_gym: 'Fitness / Gym',
+  hospitality: 'Hospitality', professional_services: 'Professional Services',
+  auto_services: 'Auto Services', pet_services: 'Pet Services',
+  education: 'Education', entertainment: 'Entertainment',
   other: 'Other',
 }
 
+// ─── Goal options ─────────────────────────────────────────────────────────────
+
 const GOAL_OPTIONS = [
-  'More bookings', 'More foot traffic', 'More positive reviews', 'Better reputation',
-  'Improve customer service', 'Beat nearby competitors', 'Find service gaps', 'Grow social following',
+  'More bookings or appointments',
+  'More 5-star reviews',
+  'Better reputation score',
+  'Understand why customers churn',
+  'Beat nearby competitors',
+  'Improve customer experience',
+  'Find service gaps',
+  'Grow social following',
+  'Reduce refunds or complaints',
+  'Track product feedback',
 ]
+
+// ─── Source definitions ───────────────────────────────────────────────────────
 
 type SourceMark = ComponentType<SVGProps<SVGSVGElement>>
 
-const ONBOARDING_SOURCES: { type: 'google' | 'yelp' | 'tripadvisor' | 'instagram' | 'facebook'; label: string; Mark: SourceMark }[] = [
+interface SourceEntry {
+  type: 'google' | 'yelp' | 'tripadvisor' | 'instagram' | 'facebook' | 'trustpilot' | 'amazon' | 'shopify' | 'app_store'
+  label: string
+  Mark: SourceMark
+}
+
+const ALL_SOURCE_ENTRIES: SourceEntry[] = [
   { type: 'google', label: 'Google Business Profile', Mark: GoogleMark },
   { type: 'yelp', label: 'Yelp', Mark: YelpMark },
   { type: 'tripadvisor', label: 'TripAdvisor', Mark: TripadvisorMark },
   { type: 'instagram', label: 'Instagram', Mark: InstagramMark },
   { type: 'facebook', label: 'Facebook', Mark: FacebookMark },
+  { type: 'trustpilot', label: 'Trustpilot', Mark: TrustpilotMark },
+  { type: 'amazon', label: 'Amazon', Mark: AmazonMark },
+  { type: 'shopify', label: 'Shopify', Mark: ShopifyMark },
+  { type: 'app_store', label: 'App Store', Mark: AppStoreMark },
 ]
+
+const ONLINE_CATEGORIES = new Set([
+  'ecommerce', 'saas_software', 'mobile_app', 'online_course_community', 'creator_brand',
+])
+
+const HOSPITALITY_CATEGORIES = new Set([
+  'hotel', 'event_venue', 'golf_country_club', 'entertainment_attraction', 'tour_travel',
+  'restaurant', 'cafe', 'bar', 'food_truck', 'catering',
+])
+
+function getRecommendedSources(category: string): SourceEntry[] {
+  if (ONLINE_CATEGORIES.has(category)) {
+    return ALL_SOURCE_ENTRIES.filter((s) =>
+      ['google', 'trustpilot', 'amazon', 'shopify', 'app_store'].includes(s.type),
+    )
+  }
+  if (HOSPITALITY_CATEGORIES.has(category)) {
+    return ALL_SOURCE_ENTRIES.filter((s) =>
+      ['google', 'yelp', 'tripadvisor', 'instagram', 'facebook'].includes(s.type),
+    )
+  }
+  // Default: local/service businesses
+  return ALL_SOURCE_ENTRIES.filter((s) =>
+    ['google', 'yelp', 'facebook', 'instagram', 'trustpilot'].includes(s.type),
+  )
+}
+
+// ─── Shared styles ────────────────────────────────────────────────────────────
 
 type ConnectedSource = { type: string; url?: string }
 
@@ -84,6 +183,8 @@ async function apiFetch<T>(path: string, body: unknown): Promise<T> {
   return data as T
 }
 
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export function OnboardingFlow() {
   const router = useRouter()
   const reduce = useReducedMotion()
@@ -95,6 +196,7 @@ export function OnboardingFlow() {
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [businessId, setBusinessId] = useState<string | null>(null)
+  const [selectedCategory, setSelectedCategory] = useState<string>('')
 
   const orgForm = useForm<OrgData>({ resolver: zodResolver(orgSchema) })
   const businessForm = useForm<BusinessData>({ resolver: zodResolver(businessSchema) })
@@ -122,6 +224,7 @@ export function OnboardingFlow() {
         websiteUrl: data.websiteUrl || undefined,
       })
       setBusinessId(result.id)
+      setSelectedCategory(data.category)
       setStep(2)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create business')
@@ -194,7 +297,7 @@ export function OnboardingFlow() {
                 Workspace name
               </label>
               <input
-                placeholder="e.g. Sunrise Coffee Co."
+                placeholder="e.g. Sunrise Dental Group"
                 className={fieldClass}
                 {...orgForm.register('name')}
               />
@@ -245,18 +348,37 @@ export function OnboardingFlow() {
                 <label className="mb-1.5 block text-sm font-medium text-foreground">Category</label>
                 <select className={fieldClass} {...businessForm.register('category')}>
                   <option value="">Select a category</option>
-                  {BUSINESS_CATEGORIES.map((c) => (
-                    <option key={c} value={c}>{CATEGORY_LABELS[c] ?? c}</option>
+                  {BUSINESS_CATEGORY_GROUPS.map((group) => (
+                    <optgroup key={group.label} label={group.label}>
+                      {group.categories.map((c) => (
+                        <option key={c} value={c}>
+                          {CATEGORY_LABELS[c] ?? c}
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
+                {businessForm.formState.errors.category && (
+                  <p className="mt-1.5 text-xs text-destructive">
+                    {businessForm.formState.errors.category.message}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-foreground">City</label>
-                <input className={fieldClass} {...businessForm.register('city')} />
+                <input
+                  placeholder="e.g. Austin"
+                  className={fieldClass}
+                  {...businessForm.register('city')}
+                />
               </div>
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-foreground">State</label>
-                <input className={fieldClass} {...businessForm.register('state')} />
+                <input
+                  placeholder="e.g. TX"
+                  className={fieldClass}
+                  {...businessForm.register('state')}
+                />
               </div>
               <div className="col-span-2">
                 <label className="mb-1.5 block text-sm font-medium text-foreground">
@@ -308,6 +430,8 @@ export function OnboardingFlow() {
 
     // Step 2: Connect sources
     if (step === 2) {
+      const recommendedSources = getRecommendedSources(selectedCategory)
+
       return (
         <div className={card}>
           <div className="flex items-center gap-3">
@@ -324,7 +448,7 @@ export function OnboardingFlow() {
             </div>
           </div>
           <div className="mt-6 space-y-3">
-            {ONBOARDING_SOURCES.map(({ type, label, Mark }) => {
+            {recommendedSources.map(({ type, label, Mark }) => {
               const cap = SOURCE_CAPABILITIES[type]
               const isConnected = connectedSources.some((s) => s.type === type)
               const isUrlMode = cap.mode === 'public_url'

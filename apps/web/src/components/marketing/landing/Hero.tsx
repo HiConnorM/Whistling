@@ -33,8 +33,8 @@ export function Hero() {
 
             <Reveal delay={0.5} className="mt-7 max-w-xl">
               <p className="text-lg leading-relaxed text-muted-foreground">
-                Connect your reviews, social profiles, and competitors. Every Monday, get a clear
-                brief on what to fix next.
+                Connect every place customers leave feedback — reviews, comments, support tickets,
+                app stores. Every Monday, get a clear brief on what to fix next.
               </p>
             </Reveal>
 

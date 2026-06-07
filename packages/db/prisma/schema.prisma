@@ -88,9 +88,14 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  memberships   OrgMembership[]
-  businesses    Business[]
-  subscription  Subscription?
+  memberships      OrgMembership[]
+  businesses       Business[]
+  subscription     Subscription?
+  usageLedgers     UsageLedger[]
+  usageEvents      UsageEvent[]
+  providerRuns     ProviderRun[]
+  responderDrafts  ResponderDraft[]
+  auditLogs        AuditLog[]
 
   @@map("organizations")
 }
@@ -188,9 +193,86 @@ model Business {
 }
 
 enum BusinessCategory {
+  // Food & Beverage
   RESTAURANT
   CAFE
   BAR
+  COFFEE_SHOP
+  BAKERY
+  FOOD_TRUCK
+  CATERING
+  // Fitness & Wellness
+  GYM_FITNESS
+  YOGA_STUDIO
+  MARTIAL_ARTS
+  // Beauty & Personal Care
+  HAIR_SALON
+  BARBER_SHOP
+  SPA
+  MED_SPA
+  NAIL_SALON
+  TATTOO_SHOP
+  // Pet Services
+  VETERINARIAN
+  PET_GROOMING
+  PET_BOARDING
+  // Auto Services
+  AUTO_REPAIR
+  CAR_WASH
+  AUTO_DEALERSHIP
+  // Home & Trade Services
+  PLUMBING
+  ELECTRICAL
+  HVAC
+  ROOFING
+  LANDSCAPING
+  CLEANING_SERVICES
+  MOVING_COMPANY
+  GENERAL_CONTRACTOR
+  // Healthcare
+  DENTAL
+  CHIROPRACTIC
+  PHYSICAL_THERAPY
+  MENTAL_HEALTH
+  PRIMARY_CARE
+  URGENT_CARE
+  DERMATOLOGY
+  VISION_CARE
+  WELLNESS_CLINIC
+  // Hospitality & Experiences
+  HOTEL
+  EVENT_VENUE
+  GOLF_COUNTRY_CLUB
+  ENTERTAINMENT_ATTRACTION
+  TOUR_TRAVEL
+  // Retail
+  BOUTIQUE
+  SPECIALTY_RETAIL
+  JEWELRY_STORE
+  FURNITURE_HOME
+  FLORIST
+  SPORTING_GOODS
+  BOOKSTORE
+  // Professional Services
+  LAW_FIRM
+  ACCOUNTING_TAX
+  REAL_ESTATE
+  INSURANCE_AGENCY
+  MARKETING_AGENCY
+  CONSULTING
+  ARCHITECTURE_DESIGN
+  // Education & Childcare
+  DAYCARE_PRESCHOOL
+  TUTORING_CENTER
+  MUSIC_DANCE_ARTS
+  TRADE_VOCATIONAL_SCHOOL
+  // Online & Digital
+  ECOMMERCE
+  SAAS_SOFTWARE
+  MOBILE_APP
+  ONLINE_COURSE_COMMUNITY
+  CREATOR_BRAND
+  // Legacy — kept for existing records
   RETAIL
   HEALTH_WELLNESS
   BEAUTY_SALON
@@ -240,16 +322,34 @@ model BusinessSource {
 }
 
 enum SourceType {
+  // Social & owned channels
   GOOGLE
   INSTAGRAM
   FACEBOOK
   YOUTUBE
   TIKTOK
+  // Local & hospitality review platforms
   YELP
   TRIPADVISOR
+  // Universal review platforms
+  TRUSTPILOT
+  // B2B review platforms
+  G2
+  CAPTERRA
+  // Ecommerce
+  AMAZON
+  SHOPIFY
+  // App stores
+  APP_STORE
+  GOOGLE_PLAY
+  // Community
+  REDDIT
+  DISCORD
+  // Internal / manual
   CSV
   WEBSITE_FORM
   EMAIL_INBOX
+  SUPPORT_TICKET
   MANUAL
 }
 
@@ -274,6 +374,11 @@ model Competitor {
   instagramHandle  String?
   websiteUrl       String?
   city             String?
+  rating           Float?
+  reviewCount      Int?
+  discoveryScore   Float?   // AI-ranked relevance 0–1
+  isAutoDiscovered Boolean  @default(false)
+  scanDepth        String   @default("LIGHT") // LIGHT | STANDARD | DEEP
   notes            String?
   isActive         Boolean  @default(true)
   lastScannedAt    DateTime?
@@ -605,4 +710,135 @@ enum JobStatus {
   COMPLETED
   FAILED
   CANCELLED
+}
+
+// ─── Usage & Billing ──────────────────────────────────────────────────────────
+
+model UsageLedger {
+  id                       String   @id @default(cuid())
+  organizationId           String
+  periodStart              DateTime
+  periodEnd                DateTime
+  // Signal counts
+  collectedSignals         Int      @default(0)
+  apifyRuns                Int      @default(0)
+  competitorScans          Int      @default(0)
+  scheduledScans           Int      @default(0)
+  // AI counts
+  openaiInputTokens        Int      @default(0)
+  openaiOutputTokens       Int      @default(0)
+  responderDrafts          Int      @default(0)
+  reportsGenerated         Int      @default(0)
+  // Cost tracking (USD cents)
+  estimatedApifyCostCents  Int      @default(0)
+  estimatedOpenAICostCents Int      @default(0)
+  estimatedEmailCostCents  Int      @default(0)
+  estimatedTotalCostCents  Int      @default(0)
+  hardStopCents            Int
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  usageEvents  UsageEvent[]
+
+  @@unique([organizationId, periodStart])
+  @@index([organizationId])
+  @@map("usage_ledgers")
+}
+
+model UsageEvent {
+  id                 String   @id @default(cuid())
+  organizationId     String
+  ledgerId           String?
+  businessId         String?
+  sourceId           String?
+  provider           String   // apify | openai | resend | internal
+  eventType          String   // scan_start | signal_collected | ai_classify | ai_embed | ai_report | responder_draft | email_sent
+  quantity           Int      @default(1)
+  estimatedCostCents Int      @default(0)
+  metadata           Json?
+  createdAt          DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ledger       UsageLedger? @relation(fields: [ledgerId], references: [id])
+
+  @@index([organizationId, createdAt])
+  @@index([ledgerId])
+  @@map("usage_events")
+}
+
+model ProviderRun {
+  id                 String    @id @default(cuid())
+  organizationId     String
+  businessId         String
+  sourceId           String?
+  provider           String    @default("apify")
+  actorId            String
+  runId              String?   @unique
+  datasetId          String?
+  status             String    @default("PENDING") // PENDING | RUNNING | SUCCEEDED | FAILED
+  requestedMaxItems  Int
+  collectedItems     Int       @default(0)
+  estimatedCostCents Int       @default(0)
+  actualCostCents    Int?
+  startedAt          DateTime  @default(now())
+  finishedAt         DateTime?
+  errorMessage       String?   @db.Text
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([businessId])
+  @@map("provider_runs")
+}
+
+// ─── AI Responder ─────────────────────────────────────────────────────────────
+
+model ResponderDraft {
+  id             String    @id @default(cuid())
+  organizationId String
+  businessId     String
+  mentionId      String
+  sourceType     String
+  reviewText     String    @db.Text
+  tone           String    @default("professional") // professional | warm | playful | direct | hospitality
+  generatedText  String    @db.Text
+  approvedText   String?   @db.Text
+  status         String    @default("PENDING") // PENDING | APPROVED | REJECTED | POSTED
+  safetyFlags    String[]  // list of triggered safety rules
+  brandVoice     String?   // stored brand voice prompt snippet
+  createdById    String
+  approvedById   String?
+  approvedAt     DateTime?
+  postedAt       DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status])
+  @@index([businessId])
+  @@index([mentionId])
+  @@map("responder_drafts")
+}
+
+// ─── Audit Log ────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String?
+  action         String   // source.connected | scan.started | billing.plan_changed | responder.approved | admin.action
+  resourceType   String?
+  resourceId     String?
+  metadata       Json?
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([action])
+  @@map("audit_logs")
 }

@@ -12,6 +12,9 @@ import { recommendationRoutes } from './routes/recommendations.js'
 import { dashboardRoutes } from './routes/dashboard.js'
 import { uploadRoutes } from './routes/upload.js'
 import { webhookRoutes } from './routes/webhooks.js'
+import { billingRoutes } from './routes/billing.js'
+import { responderRoutes } from './routes/responder.js'
+import { adminRoutes } from './routes/admin.js'
 import { authPlugin } from './plugins/auth.js'
 import { dbPlugin } from './plugins/db.js'
 import { redisPlugin } from './plugins/redis.js'
@@ -66,6 +69,9 @@ export async function buildServer() {
   await app.register(recommendationRoutes, { prefix: '/api/recommendations' })
   await app.register(dashboardRoutes, { prefix: '/api/dashboard' })
   await app.register(uploadRoutes, { prefix: '/api/upload' })
+  await app.register(billingRoutes, { prefix: '/api/billing' })
+  await app.register(responderRoutes, { prefix: '/api/responder' })
+  await app.register(adminRoutes, { prefix: '/internal/admin' })
   await app.register(webhookRoutes, { prefix: '/webhooks' })
 
   // ─── Global error handler ─────────────────────────────────────────────────

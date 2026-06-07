@@ -19,16 +19,16 @@ const FEATURED: Quote = {
 
 const SUPPORTING: Quote[] = [
   {
-    body: 'It flagged a parking complaint trend three weeks before it would have dented my star rating. We fixed it quietly and never took the hit.',
+    body: 'It flagged a booking-friction trend three weeks before it would have dented my star rating. We fixed the intake form quietly and never took the hit.',
     name: 'Priya Nair',
-    role: 'General Manager',
-    business: 'Aster & Oak Spa',
+    role: 'Owner',
+    business: 'Aster & Oak Wellness',
   },
   {
-    body: 'The competitor benchmark is the part I did not know I needed. Seeing where we actually win changed how we talk to new customers.',
+    body: 'The competitor benchmark is the part I did not know I needed. Seeing exactly where we actually win changed how we talk to new clients.',
     name: 'Diego Romero',
-    role: 'Owner',
-    business: "Romero's Auto Care",
+    role: 'Founder',
+    business: 'Romero Legal Group',
   },
 ]
 
@@ -57,8 +57,8 @@ export function Testimonials() {
             Owners stopped guessing.
           </h2>
           <p className="mt-5 max-w-xl text-lg leading-relaxed text-muted-foreground">
-            Restaurants, spas, and shops that grow on word of mouth, now reading the room before it
-            shows up in the ratings.
+            Clinics, law firms, salons, contractors, SaaS teams — any business that earns reviews
+            is now reading the room before it shows up in the ratings.
           </p>
         </Reveal>
 
@@ -66,7 +66,7 @@ export function Testimonials() {
           <Reveal className="lg:col-span-3">
             <figure className="flex h-full flex-col justify-between rounded-[14px] border border-border bg-card p-8 md:p-10">
               <blockquote className="font-display text-2xl font-medium leading-snug tracking-tight text-foreground md:text-3xl">
-                <span className="text-brand">“</span>
+                <span className="text-brand">"</span>
                 {FEATURED.body}
               </blockquote>
               <figcaption>

@@ -4,9 +4,9 @@ import { BookOpen, Calendar, TrendingUp } from 'lucide-react'
 export const metadata: Metadata = { title: 'Weekly Briefs' }
 
 const MOCK_REPORTS = [
-  { id: '1', period: 'Dec 2 – Dec 8, 2025', pulse: 82, pulsePrev: 76, biggestWin: 'Patio mentions up 27%', biggestRisk: 'Friday wait-time complaints up 18%', sentAt: 'Dec 9, 2025' },
-  { id: '2', period: 'Nov 25 – Dec 1, 2025', pulse: 76, pulsePrev: 74, biggestWin: 'Live music nights getting major traction', biggestRisk: 'Margarita quality inconsistency noted by 12 customers', sentAt: 'Dec 2, 2025' },
-  { id: '3', period: 'Nov 18 – Nov 24, 2025', pulse: 74, pulsePrev: 68, biggestWin: 'Staff friendliness mentions at an all-time high', biggestRisk: 'Parking complaints spiked around Thanksgiving weekend', sentAt: 'Nov 25, 2025' },
+  { id: '1', period: 'Dec 2 – Dec 8, 2025', pulse: 87, pulsePrev: 78, biggestWin: 'Treatment outcome reviews up 18% — patients are sharing results unprompted', biggestRisk: 'Online booking complaints up 18% from new patients', sentAt: 'Dec 9, 2025' },
+  { id: '2', period: 'Nov 25 – Dec 1, 2025', pulse: 78, pulsePrev: 74, biggestWin: 'Staff attentiveness at an all-time high in patient feedback', biggestRisk: 'Scheduling friction — 8 reviews ask for evening or weekend hours', sentAt: 'Dec 2, 2025' },
+  { id: '3', period: 'Nov 18 – Nov 24, 2025', pulse: 74, pulsePrev: 69, biggestWin: 'Appointment availability mentions improved after adding Tuesday late hours', biggestRisk: 'Insurance billing questions spiked — 9 mentions, up from 3', sentAt: 'Nov 25, 2025' },
 ]
 
 export default function ReportsPage() {
@@ -34,11 +34,11 @@ export default function ReportsPage() {
           </div>
           <div className="rounded-lg bg-white p-4">
             <div className="mb-1 text-xs font-semibold text-green-700">Biggest Win</div>
-            <p className="text-sm text-gray-800">Patio mentions up 27%. Customers are connecting you with atmosphere and live music.</p>
+            <p className="text-sm text-gray-800">Treatment outcome reviews up 18%. Patients are sharing results unprompted — your strongest differentiator.</p>
           </div>
           <div className="rounded-lg bg-white p-4">
             <div className="mb-1 text-xs font-semibold text-red-700">Biggest Risk</div>
-            <p className="text-sm text-gray-800">Wait-time complaints up 18%, mostly Friday evenings.</p>
+            <p className="text-sm text-gray-800">Online booking complaints up 18%, mostly from new patients scheduling initial visits.</p>
           </div>
         </div>
         <div className="mt-4 flex gap-3">

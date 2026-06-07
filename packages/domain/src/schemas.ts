@@ -144,7 +144,9 @@ export const topicClusterSchema = z.object({
 
 // ─── Subscription ─────────────────────────────────────────────────────────────
 
-export const planLimitsSchema = z.object({
+// Legacy Zod schema — kept for form validation only.
+// For plan limits and entitlements, use PLAN_LIMITS from '@whistling/domain/plans'.
+export const planFeatureSchema = z.object({
   businesses: z.number().int(),
   competitors: z.number().int(),
   scanFrequencyHours: z.number().int(),
@@ -156,57 +158,6 @@ export const planLimitsSchema = z.object({
   csvExport: z.boolean(),
   apiAccess: z.boolean(),
 })
-
-export const PLAN_LIMITS: Record<(typeof SUBSCRIPTION_PLANS)[number], z.infer<typeof planLimitsSchema>> = {
-  starter: {
-    businesses: 1,
-    competitors: 3,
-    scanFrequencyHours: 168,
-    dataRetentionDays: 90,
-    teamMembers: 1,
-    weeklyReports: true,
-    dailyAlerts: false,
-    whiteLabel: false,
-    csvExport: false,
-    apiAccess: false,
-  },
-  pro: {
-    businesses: 1,
-    competitors: 10,
-    scanFrequencyHours: 24,
-    dataRetentionDays: 365,
-    teamMembers: 3,
-    weeklyReports: true,
-    dailyAlerts: true,
-    whiteLabel: false,
-    csvExport: true,
-    apiAccess: false,
-  },
-  growth: {
-    businesses: 3,
-    competitors: 25,
-    scanFrequencyHours: 12,
-    dataRetentionDays: 730,
-    teamMembers: 10,
-    weeklyReports: true,
-    dailyAlerts: true,
-    whiteLabel: false,
-    csvExport: true,
-    apiAccess: false,
-  },
-  agency: {
-    businesses: 50,
-    competitors: 100,
-    scanFrequencyHours: 6,
-    dataRetentionDays: 1095,
-    teamMembers: 50,
-    weeklyReports: true,
-    dailyAlerts: true,
-    whiteLabel: true,
-    csvExport: true,
-    apiAccess: true,
-  },
-}
 
 // ─── CSV Upload ───────────────────────────────────────────────────────────────
 

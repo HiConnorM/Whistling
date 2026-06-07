@@ -3,9 +3,9 @@ import { cn } from '@/lib/utils'
 import { PulseRing } from './PulseRing'
 
 const LOVED = [
-  { topic: 'Patio atmosphere', change: 27 },
-  { topic: 'Live music nights', change: 12 },
-  { topic: 'Friendly servers', change: 4 },
+  { topic: 'Food quality', change: 19 },
+  { topic: 'Weekend atmosphere', change: 24 },
+  { topic: 'Staff friendliness', change: 11 },
 ]
 
 /**
@@ -53,7 +53,7 @@ export function ProductPreview({ className }: { className?: string }) {
         </p>
         <p className="mt-1 flex items-start gap-1.5 text-sm leading-relaxed text-foreground">
           <ArrowUpRight className="mt-0.5 h-4 w-4 shrink-0 text-brand" strokeWidth={1.75} />
-          Open a Friday pickup station. Wait-time complaints climbed 18% in the 6 to 9pm window.
+          Add a reservation link to Google. Fourteen reviews mention difficulty booking — two nearby spots are winning on "easy reservations."
         </p>
       </div>
     </div>

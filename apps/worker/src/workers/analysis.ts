@@ -3,6 +3,7 @@ import type { PrismaClient } from '@whistling/db'
 import { classifyMentionsBatch } from '@whistling/ai'
 import { getUnclassifiedMentions } from '@whistling/db'
 import type { ClassifyMentionsBatchPayload } from '@whistling/jobs'
+import { recordAiUsage } from '../services/enforcement.js'
 
 export function startAnalysisWorker(
   db: PrismaClient,
@@ -41,13 +42,14 @@ async function classifyBatch(
       isSpam: false,
       analysis: null,
     },
-    include: { business: { select: { category: true } } },
+    include: { business: { select: { category: true, organizationId: true } } },
   })
 
   if (mentions.length === 0) return { classified: 0 }
 
   const business = mentions[0]?.business
   const category = business?.category.toLowerCase().replace('_', ' ')
+  const organizationId = business?.organizationId
 
   const toClassify = mentions.map((m) => ({
     id: m.id,
@@ -55,7 +57,8 @@ async function classifyBatch(
     rating: m.rating ?? null,
   }))
 
-  const results = await classifyMentionsBatch(toClassify, category)
+  const { results, totalInputTokens, totalOutputTokens } =
+    await classifyMentionsBatch(toClassify, category)
 
   let classified = 0
   for (const [mentionId, analysis] of results.entries()) {
@@ -75,19 +78,32 @@ async function classifyBatch(
         summary: analysis.summary,
         isSpam: analysis.isSpam,
         containsPII: analysis.containsPII,
-        modelVersion: `gpt-4o-mini-${new Date().toISOString().slice(0, 7)}`,
+        modelVersion: `${MODELS_VERSION}-${new Date().toISOString().slice(0, 7)}`,
       },
       update: {},
     })
 
     if (analysis.isSpam) {
-      await db.mention.update({
-        where: { id: mentionId },
-        data: { isSpam: true },
-      })
+      await db.mention.update({ where: { id: mentionId }, data: { isSpam: true } })
     }
 
     classified++
+  }
+
+  // Record token costs against the org's usage ledger
+  if (organizationId && (totalInputTokens > 0 || totalOutputTokens > 0)) {
+    const sub = await db.subscription.findUnique({
+      where: { organizationId },
+      select: { currentPeriodStart: true },
+    })
+    if (sub?.currentPeriodStart) {
+      await recordAiUsage(db, organizationId, sub.currentPeriodStart, {
+        inputTokens: totalInputTokens,
+        outputTokens: totalOutputTokens,
+        eventType: 'ai_classify',
+        batch: true,
+      })
+    }
   }
 
   return { classified }
@@ -95,15 +111,15 @@ async function classifyBatch(
 
 async function classifyPending(db: PrismaClient, payload: { businessId: string }) {
   const mentions = await getUnclassifiedMentions(db, 50)
-
   if (mentions.length === 0) return { classified: 0 }
 
   const business = await db.business.findUnique({
     where: { id: payload.businessId },
-    select: { category: true },
+    select: { category: true, organizationId: true },
   })
 
   const category = business?.category.toLowerCase().replace('_', ' ')
+  const organizationId = business?.organizationId
 
   const toClassify = mentions.map((m) => ({
     id: m.id,
@@ -111,7 +127,8 @@ async function classifyPending(db: PrismaClient, payload: { businessId: string }
     rating: m.rating ?? null,
   }))
 
-  const results = await classifyMentionsBatch(toClassify, category)
+  const { results, totalInputTokens, totalOutputTokens } =
+    await classifyMentionsBatch(toClassify, category)
 
   let classified = 0
   for (const [mentionId, analysis] of results.entries()) {
@@ -131,12 +148,29 @@ async function classifyPending(db: PrismaClient, payload: { businessId: string }
         summary: analysis.summary,
         isSpam: analysis.isSpam,
         containsPII: analysis.containsPII,
-        modelVersion: `gpt-4o-mini-${new Date().toISOString().slice(0, 7)}`,
+        modelVersion: `${MODELS_VERSION}-${new Date().toISOString().slice(0, 7)}`,
       },
       update: {},
     })
     classified++
   }
 
+  if (organizationId && (totalInputTokens > 0 || totalOutputTokens > 0)) {
+    const sub = await db.subscription.findUnique({
+      where: { organizationId },
+      select: { currentPeriodStart: true },
+    })
+    if (sub?.currentPeriodStart) {
+      await recordAiUsage(db, organizationId, sub.currentPeriodStart, {
+        inputTokens: totalInputTokens,
+        outputTokens: totalOutputTokens,
+        eventType: 'ai_classify',
+        batch: true,
+      })
+    }
+  }
+
   return { classified }
 }
+
+const MODELS_VERSION = process.env['OPENAI_CLASSIFICATION_MODEL'] ?? 'gpt-4o-mini'

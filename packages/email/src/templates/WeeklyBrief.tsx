@@ -243,7 +243,7 @@ export function WeeklyBrief({
             <Hr className="border-gray-200" />
             <Section className="mt-4 text-center">
               <Text className="text-xs text-gray-400">
-                Whistling.io · Customer Intelligence for Local Businesses
+                Whistling.io · Customer Intelligence for Any Business That Earns Reviews
               </Text>
               <Text className="mt-1 text-xs text-gray-400">
                 <a href={unsubscribeUrl} className="text-gray-400 underline">

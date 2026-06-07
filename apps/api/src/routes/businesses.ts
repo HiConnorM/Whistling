@@ -2,6 +2,8 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { createBusinessSchema, updateBusinessSchema } from '@whistling/domain'
 import { getBusinessesForOrg, getBusinessWithSources } from '@whistling/db'
+import { enforceUsageLimit } from '../services/enforcement.js'
+import { writeAuditLog } from '../services/audit.js'
 
 export async function businessRoutes(app: FastifyInstance) {
   // List businesses for org
@@ -33,24 +35,11 @@ export async function businessRoutes(app: FastifyInstance) {
     { preHandler: [app.authenticate] },
     async (req, reply) => {
       const body = createBusinessSchema.parse(req.body)
-      const { organizationId } = req.user
+      const { organizationId, userId } = req.user
 
-      // Check plan limits
-      const existingCount = await app.db.business.count({
-        where: { organizationId, isActive: true },
-      })
-
-      const sub = await app.db.subscription.findUnique({ where: { organizationId } })
-      const plan = sub?.plan ?? 'STARTER'
-      const limits: Record<string, number> = {
-        STARTER: 1, PRO: 1, GROWTH: 3, AGENCY: 50,
-      }
-      const maxBusinesses = limits[plan] ?? 1
-
-      if (existingCount >= maxBusinesses) {
-        return reply.status(402).send({
-          error: `Your plan allows ${maxBusinesses} business${maxBusinesses > 1 ? 'es' : ''}. Upgrade to add more.`,
-        })
+      const check = await enforceUsageLimit(app.db, { organizationId }, 'add_business')
+      if (!check.allowed) {
+        return reply.status(402).send({ error: check.reason, upgradeRequired: check.upgradeRequired })
       }
 
       const business = await app.db.business.create({
@@ -120,14 +109,35 @@ export async function businessRoutes(app: FastifyInstance) {
         return reply.status(404).send({ error: 'Not found' })
       }
 
+      // Enforce usage limits before queuing scan
+      const check = await enforceUsageLimit(
+        app.db,
+        { organizationId: req.user.organizationId, businessId: business.id },
+        'run_scan',
+      )
+      if (!check.allowed) {
+        return reply.status(402).send({ error: check.reason, upgradeRequired: check.upgradeRequired })
+      }
+
       const jobs = await Promise.all(
         business.sources.map((source) =>
           app.queues.ingestion.add('scan-source', {
             sourceId: source.id,
             businessId: business.id,
+            maxItems: check.maxItemsAllowed,
           }),
         ),
       )
+
+      await writeAuditLog(app.db, {
+        organizationId: req.user.organizationId,
+        userId: req.user.userId,
+        action: 'scan.started',
+        resourceType: 'business',
+        resourceId: business.id,
+        metadata: { sourceCount: jobs.length },
+        req,
+      })
 
       return { queued: jobs.length }
     },
