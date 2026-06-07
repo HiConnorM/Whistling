@@ -842,3 +842,17 @@ model AuditLog {
   @@index([action])
   @@map("audit_logs")
 }
+
+// ─── Webhook Idempotency ──────────────────────────────────────────────────────
+// Stores processed event IDs so re-delivery is a no-op.
+// Keyed by the provider's event ID (e.g. Stripe evt_xxx).
+
+model ProcessedWebhookEvent {
+  id        String   @id          // provider event ID (e.g. Stripe evt_xxx)
+  provider  String
+  eventType String
+  createdAt DateTime @default(now())
+
+  @@index([provider, createdAt])
+  @@map("processed_webhook_events")
+}

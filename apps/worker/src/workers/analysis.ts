@@ -51,6 +51,26 @@ async function classifyBatch(
   const category = business?.category.toLowerCase().replace('_', ' ')
   const organizationId = business?.organizationId
 
+  // Skip AI if subscription is inactive — respect hard stop rule
+  if (organizationId) {
+    const sub = await db.subscription.findUnique({
+      where: { organizationId },
+      select: { status: true, currentPeriodStart: true },
+    })
+    if (sub?.status === 'PAST_DUE' || sub?.status === 'CANCELED') {
+      return { classified: 0, skipped: true, reason: `subscription ${sub.status}` }
+    }
+    // Check hard stop
+    if (sub?.currentPeriodStart) {
+      const ledger = await db.usageLedger.findUnique({
+        where: { organizationId_periodStart: { organizationId, periodStart: sub.currentPeriodStart } },
+      })
+      if (ledger && ledger.estimatedTotalCostCents >= ledger.hardStopCents) {
+        return { classified: 0, skipped: true, reason: 'hard_stop_reached' }
+      }
+    }
+  }
+
   const toClassify = mentions.map((m) => ({
     id: m.id,
     text: m.text,

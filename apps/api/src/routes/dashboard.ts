@@ -96,16 +96,25 @@ export async function dashboardRoutes(app: FastifyInstance) {
       const hasAnyMentions = (currentStats?.total ?? 0) > 0
       const activeRun = recentProviderRuns.find((r) => r.status === 'RUNNING' || r.status === 'PENDING')
       const lastFailedRun = recentProviderRuns.find((r) => r.status === 'FAILED')
+      const hasConnectedSource = sourceHealth.some((s) => s.status === 'CONNECTED')
+      const hasUnanalysedMentions = await app.db.mention.count({
+        where: { businessId, isSpam: false, analysis: null },
+      }).then((n) => n > 0)
 
+      // Ordered from least to most ready
       const scanState = !hasAnySources
         ? 'no_sources'
-        : activeRun
-          ? 'scanning'
-          : !hasAnyMentions
-            ? lastFailedRun
-              ? 'scan_failed'
-              : 'scan_queued'
-            : 'ready'
+        : !hasConnectedSource
+          ? 'needs_connection'
+          : activeRun
+            ? 'scanning'
+            : !hasAnyMentions
+              ? lastFailedRun
+                ? 'scan_failed'
+                : 'sources_connected'  // connected but never scanned
+              : hasUnanalysedMentions
+                ? 'analysis_pending'
+                : 'ready'
 
       return {
         business,

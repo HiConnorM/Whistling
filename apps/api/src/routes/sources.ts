@@ -1,8 +1,19 @@
 import type { FastifyInstance } from 'fastify'
 import { connectSourceSchema } from '@whistling/domain'
-import { enforceUsageLimit } from '../services/enforcement.js'
+import { actorKeyForSource, APIFY_ACTORS } from '@whistling/connectors'
+import { enforceUsageLimit, createScanBudget } from '../services/enforcement.js'
 import { isSafeUrl } from '../services/ssrf.js'
 import { writeAuditLog } from '../services/audit.js'
+import type { Prisma } from '@whistling/db'
+
+// Source types that go through Apify (public URL scraping, no OAuth needed)
+const APIFY_SOURCE_TYPES = new Set(['google', 'yelp', 'tripadvisor', 'facebook', 'instagram', 'tiktok'])
+
+// Source types that require OAuth flow
+const OAUTH_SOURCE_TYPES = new Set(['youtube', 'reddit', 'discord'])
+
+// Source types that are always ready (file upload or manual entry)
+const MANUAL_SOURCE_TYPES = new Set(['csv', 'manual', 'support_ticket', 'email_inbox', 'website_form'])
 
 export async function sourceRoutes(app: FastifyInstance) {
   app.get<{ Params: { businessId: string } }>(
@@ -59,18 +70,55 @@ export async function sourceRoutes(app: FastifyInstance) {
 
       const body = connectSourceSchema.parse(req.body)
 
-      // Validate URLs to prevent SSRF
       if (body.url && !isSafeUrl(body.url)) {
         return reply.status(400).send({ error: 'Invalid source URL' })
+      }
+
+      // Determine initial status and metadata based on source strategy
+      const sourceType = body.type
+      let initialStatus: 'CONNECTED' | 'NEEDS_AUTH' | 'PENDING' = 'PENDING'
+      let metadata: Record<string, unknown> | undefined
+
+      if (APIFY_SOURCE_TYPES.has(sourceType)) {
+        if (!body.url) {
+          return reply.status(400).send({ error: `A URL is required for ${sourceType} sources` })
+        }
+
+        const mediaType = body.mediaType ?? 'review'
+        const actorKey = actorKeyForSource(sourceType, mediaType)
+        if (!actorKey) {
+          return reply.status(400).send({ error: `No actor configured for ${sourceType}` })
+        }
+
+        const sub = await app.db.subscription.findUnique({
+          where: { organizationId },
+          select: { plan: true },
+        })
+        const { scanDepth, maxItems } = createScanBudget(sub?.plan ?? 'STARTER')
+
+        metadata = {
+          strategy: 'apify',
+          actorKey,
+          actorId: APIFY_ACTORS[actorKey].actorId,
+          mediaType,
+          scanDepth,
+          maxItems,
+        }
+        initialStatus = 'CONNECTED'
+      } else if (MANUAL_SOURCE_TYPES.has(sourceType)) {
+        initialStatus = 'CONNECTED'
+      } else if (OAUTH_SOURCE_TYPES.has(sourceType)) {
+        initialStatus = 'NEEDS_AUTH'
       }
 
       const source = await app.db.businessSource.create({
         data: {
           businessId: req.params.businessId,
-          type: body.type.toUpperCase() as Parameters<typeof app.db.businessSource.create>[0]['data']['type'],
+          type: sourceType.toUpperCase() as Parameters<typeof app.db.businessSource.create>[0]['data']['type'],
           url: body.url,
           externalId: body.externalId,
-          status: 'PENDING',
+          status: initialStatus,
+          metadata: metadata as Prisma.InputJsonValue | undefined,
         },
       })
 
@@ -80,7 +128,7 @@ export async function sourceRoutes(app: FastifyInstance) {
         action: 'source.connected',
         resourceType: 'business_source',
         resourceId: source.id,
-        metadata: { sourceType: body.type },
+        metadata: { sourceType: body.type, strategy: metadata?.['strategy'] ?? 'connector' },
         req,
       })
 

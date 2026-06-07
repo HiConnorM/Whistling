@@ -7,6 +7,8 @@ export const scanSourcePayload = z.object({
   businessId: z.string(),
   cursor: z.string().optional(),
   fullRescan: z.boolean().default(false),
+  maxItems: z.number().int().positive().optional(),
+  scanDepth: z.enum(['light', 'standard', 'deep']).optional(),
 })
 
 export const normalizeRawItemPayload = z.object({

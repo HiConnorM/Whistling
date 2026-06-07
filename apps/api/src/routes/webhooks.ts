@@ -13,7 +13,6 @@ declare module 'fastify' {
 }
 
 export async function webhookRoutes(app: FastifyInstance) {
-  // ── Stripe webhook ────────────────────────────────────────────────────────
   app.post(
     '/stripe',
     { config: { rawBody: true } },
@@ -40,29 +39,23 @@ export async function webhookRoutes(app: FastifyInstance) {
         return reply.status(400).send({ error: 'Invalid webhook signature' })
       }
 
-      // Idempotency: skip if we've already processed this event
-      const eventId = event.id
-      const already = await app.db.auditLog.findFirst({
-        where: { action: 'admin.action', metadata: { path: ['stripeEventId'], equals: eventId } },
+      // Idempotency: use ProcessedWebhookEvent keyed by Stripe event ID
+      const existing = await app.db.processedWebhookEvent.findUnique({
+        where: { id: event.id },
       })
-      if (already) return { received: true, skipped: true }
+      if (existing) return { received: true, skipped: true }
+
+      // Mark as processed before handling (prevents duplicate processing on retry)
+      await app.db.processedWebhookEvent.create({
+        data: { id: event.id, provider: 'stripe', eventType: event.type },
+      })
 
       try {
         await handleStripeEvent(app, event)
       } catch (err) {
-        app.log.error({ err, eventId, eventType: event.type }, 'Stripe webhook handler error')
-        // Return 200 so Stripe doesn't retry indefinitely for processing errors
+        app.log.error({ err, eventId: event.id, eventType: event.type }, 'Stripe webhook handler error')
         return { received: true, error: true }
       }
-
-      // Record that we processed this event
-      await app.db.auditLog.create({
-        data: {
-          organizationId: 'system',
-          action: 'admin.action',
-          metadata: { stripeEventId: eventId, eventType: event.type },
-        },
-      })
 
       return { received: true }
     },
@@ -78,38 +71,58 @@ async function handleStripeEvent(app: FastifyInstance, event: Stripe.Event) {
       const priceId = sub.items.data[0]?.price.id ?? ''
       const plan = planFromPriceId(priceId)
       const stripeStatus = mapStripeStatus(sub.status)
-
       const periodStart = new Date(sub.current_period_start * 1000)
       const periodEnd = new Date(sub.current_period_end * 1000)
       const organizationId = sub.metadata['organizationId'] ?? ''
 
-      const updated = await app.db.subscription.upsert({
-        where: { stripeCustomerId: customerId },
-        create: {
-          organizationId,
-          stripeCustomerId: customerId,
-          stripeSubscriptionId: sub.id,
-          stripePriceId: priceId,
-          plan,
-          status: stripeStatus,
-          trialEndsAt: sub.trial_end ? new Date(sub.trial_end * 1000) : null,
-          currentPeriodStart: periodStart,
-          currentPeriodEnd: periodEnd,
-          cancelAtPeriodEnd: sub.cancel_at_period_end,
-        },
-        update: {
-          plan,
-          status: stripeStatus,
-          stripePriceId: priceId,
-          trialEndsAt: sub.trial_end ? new Date(sub.trial_end * 1000) : null,
-          currentPeriodStart: periodStart,
-          currentPeriodEnd: periodEnd,
-          cancelAtPeriodEnd: sub.cancel_at_period_end,
-        },
-      })
+      const stripeFields = {
+        stripeCustomerId: customerId,
+        stripeSubscriptionId: sub.id,
+        stripePriceId: priceId,
+        plan,
+        status: stripeStatus,
+        trialEndsAt: sub.trial_end ? new Date(sub.trial_end * 1000) : null,
+        currentPeriodStart: periodStart,
+        currentPeriodEnd: periodEnd,
+        cancelAtPeriodEnd: sub.cancel_at_period_end,
+      }
+
+      // Check by organizationId first — handles trial rows that have no stripeCustomerId yet
+      let updatedOrgId = organizationId
+      const existingByOrg = organizationId
+        ? await app.db.subscription.findUnique({ where: { organizationId } })
+        : null
+
+      if (existingByOrg) {
+        await app.db.subscription.update({
+          where: { organizationId },
+          data: stripeFields,
+        })
+      } else {
+        // Try by stripeCustomerId (handles re-subscription scenarios)
+        const existingByCust = await app.db.subscription.findUnique({
+          where: { stripeCustomerId: customerId },
+        })
+        if (existingByCust) {
+          await app.db.subscription.update({
+            where: { stripeCustomerId: customerId },
+            data: stripeFields,
+          })
+          updatedOrgId = existingByCust.organizationId
+        } else {
+          // Net-new subscription — create it
+          if (!organizationId) {
+            app.log.error({ subId: sub.id }, 'Stripe subscription missing organizationId metadata')
+            break
+          }
+          await app.db.subscription.create({
+            data: { organizationId, ...stripeFields },
+          })
+        }
+      }
 
       await writeAuditLog(app.db, {
-        organizationId: updated.organizationId,
+        organizationId: updatedOrgId,
         action: 'billing.plan_changed',
         metadata: { plan, status: stripeStatus, stripeSubscriptionId: sub.id },
       })
@@ -117,12 +130,10 @@ async function handleStripeEvent(app: FastifyInstance, event: Stripe.Event) {
     }
 
     case 'invoice.paid': {
-      // New billing period started — create a fresh usage ledger
       const invoice = event.data.object as Stripe.Invoice
       const subId = typeof invoice.subscription === 'string'
         ? invoice.subscription
         : invoice.subscription?.id
-
       if (!subId) break
 
       const dbSub = await app.db.subscription.findUnique({
@@ -134,13 +145,9 @@ async function handleStripeEvent(app: FastifyInstance, event: Stripe.Event) {
       const periodStart = dbSub.currentPeriodStart ?? new Date()
       const periodEnd = dbSub.currentPeriodEnd ?? new Date()
 
-      // Upsert so re-delivery doesn't create duplicates
       await app.db.usageLedger.upsert({
         where: {
-          organizationId_periodStart: {
-            organizationId: dbSub.organizationId,
-            periodStart,
-          },
+          organizationId_periodStart: { organizationId: dbSub.organizationId, periodStart },
         },
         create: {
           organizationId: dbSub.organizationId,
@@ -158,7 +165,6 @@ async function handleStripeEvent(app: FastifyInstance, event: Stripe.Event) {
       const subId = typeof invoice.subscription === 'string'
         ? invoice.subscription
         : invoice.subscription?.id
-
       if (!subId) break
 
       await app.db.subscription.updateMany({

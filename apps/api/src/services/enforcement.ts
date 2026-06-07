@@ -209,7 +209,7 @@ export async function getOrCreateLedger(
 
 /**
  * Increment the ledger after a completed scan run.
- * estimatedApifyCostCents: roughly $0.30–$2.50 per 1,000 items depending on actor.
+ * Creates the ledger if it doesn't exist yet (handles orgs without Stripe billing).
  */
 export async function recordScanUsage(
   db: PrismaClient,
@@ -220,8 +220,22 @@ export async function recordScanUsage(
     apifyCostCents: number
   },
 ) {
-  await db.usageLedger.updateMany({
-    where: { organizationId, periodStart },
+  const sub = await db.subscription.findUnique({
+    where: { organizationId },
+    select: { plan: true, currentPeriodEnd: true },
+  })
+  const limits = getPlanLimits(sub?.plan ?? 'STARTER')
+  const periodEnd = sub?.currentPeriodEnd ?? new Date(periodStart.getTime() + 30 * 24 * 60 * 60 * 1000)
+
+  // Ensure ledger exists before incrementing
+  await db.usageLedger.upsert({
+    where: { organizationId_periodStart: { organizationId, periodStart } },
+    create: { organizationId, periodStart, periodEnd, hardStopCents: limits.hardStopCents },
+    update: {},
+  })
+
+  await db.usageLedger.update({
+    where: { organizationId_periodStart: { organizationId, periodStart } },
     data: {
       collectedSignals: { increment: opts.signals },
       apifyRuns: { increment: 1 },
@@ -234,7 +248,7 @@ export async function recordScanUsage(
     data: {
       organizationId,
       provider: 'apify',
-      eventType: 'scan_start',
+      eventType: 'scan_completed',
       quantity: opts.signals,
       estimatedCostCents: opts.apifyCostCents,
     },
@@ -264,8 +278,22 @@ export async function recordAiUsage(
   )
   const totalCents = inputCostCents + outputCostCents
 
-  await db.usageLedger.updateMany({
-    where: { organizationId, periodStart },
+  const sub = await db.subscription.findUnique({
+    where: { organizationId },
+    select: { plan: true, currentPeriodEnd: true },
+  })
+  const limits = getPlanLimits(sub?.plan ?? 'STARTER')
+  const periodEnd = sub?.currentPeriodEnd ?? new Date(periodStart.getTime() + 30 * 24 * 60 * 60 * 1000)
+
+  // Ensure ledger exists
+  await db.usageLedger.upsert({
+    where: { organizationId_periodStart: { organizationId, periodStart } },
+    create: { organizationId, periodStart, periodEnd, hardStopCents: limits.hardStopCents },
+    update: {},
+  })
+
+  await db.usageLedger.update({
+    where: { organizationId_periodStart: { organizationId, periodStart } },
     data: {
       openaiInputTokens: { increment: opts.inputTokens },
       openaiOutputTokens: { increment: opts.outputTokens },

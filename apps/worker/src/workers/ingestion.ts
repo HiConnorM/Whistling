@@ -10,6 +10,7 @@ import {
   estimateApifyCostCents,
   APIFY_TERMINAL_STATUSES,
   APIFY_FAILED_STATUSES,
+  APIFY_ACTORS,
   type ActorKey,
 } from '@whistling/connectors'
 import { hashText, isSpamText } from '@whistling/analysis'
@@ -82,7 +83,8 @@ async function scanSource(
 
   const meta = source.metadata as Record<string, unknown> | null
   const strategy = (meta?.['strategy'] as string | undefined) ?? 'connector'
-  const maxItems = (meta?.['maxItems'] as number | undefined) ?? 300
+  // payload.maxItems (from enforceUsageLimit) takes priority over stored metadata default
+  const maxItems = payload.maxItems ?? (meta?.['maxItems'] as number | undefined) ?? 150
 
   if (strategy === 'apify') {
     return scanSourceViaApify(db, source, payload, maxItems, connection)
@@ -133,6 +135,7 @@ async function scanSourceViaApify(
     return { error: 'No source URL' }
   }
 
+  const actorConfig = APIFY_ACTORS[actorKey]
   const budget = getScanBudget(scanDepthKey as 'light' | 'standard' | 'deep')
   const input = buildActorInput(actorKey, source.url, budget, { isCompetitor })
   const estimatedCost = estimateApifyCostCents(actorKey, maxItems)
@@ -145,7 +148,7 @@ async function scanSourceViaApify(
       businessId: source.business.id,
       sourceId: source.id,
       provider: 'apify',
-      actorId: actorKey,
+      actorId: actorConfig.actorId,   // real Apify actor ID, not the key
       status: 'PENDING',
       requestedMaxItems: maxItems,
       estimatedCostCents: estimatedCost,
@@ -154,7 +157,7 @@ async function scanSourceViaApify(
 
   try {
     const client = getApifyClient()
-    const { data: run } = await client.runActor(actorKey, input)
+    const { data: run } = await client.runActor(actorConfig.actorId, input)  // use real actor ID
 
     await db.providerRun.update({
       where: { id: providerRun.id },

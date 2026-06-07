@@ -47,6 +47,7 @@ export const connectSourceSchema = z.object({
   type: z.enum(SOURCE_TYPES),
   url: z.string().url().optional(),
   externalId: z.string().optional(),
+  mediaType: z.enum(['review', 'comment']).optional(),
 })
 
 // ─── Competitor ───────────────────────────────────────────────────────────────

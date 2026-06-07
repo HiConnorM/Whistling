@@ -35,7 +35,7 @@ const SYSTEM_PROMPT = `You are an expert customer feedback analyst. You work wit
 Analyze customer reviews and comments with high precision. Extract structured intelligence.
 
 Key guidelines:
-- sentiment: one of POSITIVE, NEUTRAL, NEGATIVE, MIXED
+- sentiment: one of positive, neutral, negative, mixed (lowercase)
 - sentimentScore: float from -1.0 (most negative) to 1.0 (most positive)
 - severity: how severe/negative (1=mild, 5=critical business threat)
 - urgency: how quickly it needs addressing (1=can wait, 5=immediate action)
@@ -78,8 +78,12 @@ export async function classifyMention(
   const content = response.choices[0]?.message?.content
   if (!content) throw new Error('Empty classification response')
 
-  const parsed = JSON.parse(content) as unknown
-  const result = classificationSchema.parse(parsed)
+  const raw = JSON.parse(content) as Record<string, unknown>
+  // Normalize sentiment casing — model may return uppercase despite the prompt
+  if (typeof raw['sentiment'] === 'string') {
+    raw['sentiment'] = raw['sentiment'].toLowerCase()
+  }
+  const result = classificationSchema.parse(raw)
 
   return {
     result,
@@ -163,7 +167,14 @@ async function classifyChunk(
     const content = response.choices[0]?.message?.content
     if (!content) throw new Error('Empty batch response')
 
-    const parsed = BATCH_RESULT_SCHEMA.parse(JSON.parse(content))
+    const rawBatch = JSON.parse(content) as { items?: Record<string, unknown>[] }
+    // Normalize sentiment casing on each item before parsing
+    for (const item of rawBatch.items ?? []) {
+      if (typeof item['sentiment'] === 'string') {
+        item['sentiment'] = item['sentiment'].toLowerCase()
+      }
+    }
+    const parsed = BATCH_RESULT_SCHEMA.parse(rawBatch)
     const results = new Map<string, Classification>()
 
     for (const item of parsed.items) {
