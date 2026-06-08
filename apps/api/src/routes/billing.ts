@@ -13,7 +13,10 @@ export async function billingRoutes(app: FastifyInstance) {
   // ── Create Stripe Checkout session ────────────────────────────────────────
   app.post<{ Body: { plan: string; successUrl: string; cancelUrl: string } }>(
     '/checkout',
-    { preHandler: [app.authenticate] },
+    {
+      preHandler: [app.authenticate],
+      config: { rateLimit: { max: 10, timeWindow: '1 hour' } },
+    },
     async (req, reply) => {
       const { plan, successUrl, cancelUrl } = req.body
       const { organizationId, userId } = req.user

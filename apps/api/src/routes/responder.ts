@@ -4,6 +4,8 @@ import { generateResponderDraft, estimateResponderTokens, type ResponderTone } f
 import { getPlanLimits } from '@whistling/domain'
 import { enforceUsageLimit, recordAiUsage, getOrCreateLedger } from '../services/enforcement.js'
 import { writeAuditLog } from '../services/audit.js'
+import { requireBusinessAccess } from '../services/authz.js'
+import { checkOrgRateLimit } from '../services/rateLimitOrg.js'
 
 const VALID_TONES: ResponderTone[] = ['professional', 'warm', 'playful', 'direct', 'hospitality']
 
@@ -22,12 +24,24 @@ export async function responderRoutes(app: FastifyInstance) {
   // ── Create a draft ────────────────────────────────────────────────────────
   app.post(
     '/',
-    { preHandler: [app.authenticate] },
+    {
+      preHandler: [app.authenticate],
+      config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
+    },
     async (req, reply) => {
       const body = createDraftSchema.parse(req.body)
       const { organizationId, userId } = req.user
 
-      // Check plan entitlement + usage cap
+      // Fetch subscription once — used for rate limits, plan limits, and cost tracking
+      const sub = await app.db.subscription.findUnique({ where: { organizationId } })
+
+      // Per-org daily cap (plan-tier specific)
+      const orgCheck = await checkOrgRateLimit(app.redis, organizationId, 'responder_draft', sub?.plan)
+      if (!orgCheck.allowed) {
+        return reply.status(429).send({ error: orgCheck.reason })
+      }
+
+      // Check plan entitlement + monthly usage cap
       const check = await enforceUsageLimit(app.db, { organizationId }, 'responder_draft')
       if (!check.allowed) {
         return reply.status(402).send({ error: check.reason, upgradeRequired: check.upgradeRequired })
@@ -47,7 +61,9 @@ export async function responderRoutes(app: FastifyInstance) {
         return reply.status(400).send({ error: 'Mention does not belong to this business' })
       }
 
-      const sub = await app.db.subscription.findUnique({ where: { organizationId } })
+      // Verify the businessId itself belongs to this org (prevents cross-org businessId injection)
+      await requireBusinessAccess(app.db, body.businessId, organizationId)
+
       const limits = getPlanLimits(sub?.plan ?? 'STARTER')
 
       // Brand voice only on Growth+

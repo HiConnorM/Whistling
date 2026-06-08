@@ -15,9 +15,25 @@ declare module '@fastify/jwt' {
   }
 }
 
+function getJwtSecret(): string {
+  const secret = process.env['API_JWT_SECRET']
+  if (!secret) {
+    if (process.env['NODE_ENV'] === 'production') {
+      throw new Error('API_JWT_SECRET is required in production. Set it to a 32+ character random string.')
+    }
+    // Dev/test only fallback — clearly named so it is never mistaken for a real secret
+    console.warn('[auth] WARNING: API_JWT_SECRET not set. Using insecure dev fallback. DO NOT use in production.')
+    return 'dev-only-api-jwt-secret-do-not-use-in-production!!'
+  }
+  if (secret.length < 32) {
+    throw new Error('API_JWT_SECRET must be at least 32 characters long.')
+  }
+  return secret
+}
+
 export const authPlugin = fp(async (app: FastifyInstance) => {
   await app.register(jwt, {
-    secret: process.env['AUTH_SECRET'] ?? 'dev-secret-min-32-chars-long!!!!!!',
+    secret: getJwtSecret(),
     sign: { expiresIn: '7d' },
   })
 

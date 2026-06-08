@@ -3,6 +3,10 @@ import cors from '@fastify/cors'
 import helmet from '@fastify/helmet'
 import rateLimit from '@fastify/rate-limit'
 import multipart from '@fastify/multipart'
+import { parseServerEnv } from '@whistling/config'
+
+// Validate required env vars at startup — fails fast before any connections
+parseServerEnv(process.env)
 import { businessRoutes } from './routes/businesses.js'
 import { sourceRoutes } from './routes/sources.js'
 import { competitorRoutes } from './routes/competitors.js'
@@ -31,6 +35,25 @@ export async function buildServer() {
         process.env['NODE_ENV'] !== 'production'
           ? { target: 'pino-pretty', options: { colorize: true } }
           : undefined,
+      // Redact sensitive fields from all log output
+      redact: {
+        paths: [
+          'req.headers.authorization',
+          'req.headers.cookie',
+          'req.headers["x-admin-key"]',
+          'req.headers["x-api-key"]',
+          'res.headers["set-cookie"]',
+          '*.password',
+          '*.token',
+          '*.secret',
+          '*.apiKey',
+          '*.api_key',
+          '*.accessToken',
+          '*.refreshToken',
+          '*.encryptionKey',
+        ],
+        censor: '[REDACTED]',
+      },
     },
     trustProxy: true,
   })
@@ -75,13 +98,35 @@ export async function buildServer() {
   await app.register(webhookRoutes, { prefix: '/webhooks' })
 
   // ─── Global error handler ─────────────────────────────────────────────────
-  app.setErrorHandler((err, _req, reply) => {
-    app.log.error(err)
+  app.setErrorHandler((err, req, reply) => {
     const statusCode = err.statusCode ?? 500
-    reply.status(statusCode).send({
-      error: statusCode >= 500 ? 'Internal server error' : err.message,
-      ...(process.env['NODE_ENV'] !== 'production' && { stack: err.stack }),
-    })
+
+    if (statusCode >= 500) {
+      // Log full error server-side (but redaction above strips sensitive headers)
+      req.log.error({ err, statusCode }, 'Internal server error')
+      reply.status(statusCode).send({ error: 'Internal server error' })
+    } else {
+      // 4xx: log at warn level, return the message only if it's a known safe error
+      // (Zod validation, Fastify validation, NotFoundError from authz helpers)
+      req.log.warn({ err: err.message, statusCode, path: req.url }, 'Request error')
+
+      // Only surface err.message for validation and not-found errors;
+      // don't leak arbitrary internal error messages for other 4xx codes.
+      const isSafeMessage =
+        err.name === 'ZodError' ||
+        err.name === 'NotFoundError' ||
+        err.validation !== undefined || // Fastify schema validation
+        statusCode === 404 ||
+        statusCode === 400 ||
+        statusCode === 401 ||
+        statusCode === 402 ||
+        statusCode === 403 ||
+        statusCode === 429
+
+      reply.status(statusCode).send({
+        error: isSafeMessage ? err.message : 'Bad request',
+      })
+    }
   })
 
   return app

@@ -2,8 +2,9 @@ import type { FastifyInstance } from 'fastify'
 import { connectSourceSchema } from '@whistling/domain'
 import { actorKeyForSource, APIFY_ACTORS } from '@whistling/connectors'
 import { enforceUsageLimit, createScanBudget } from '../services/enforcement.js'
-import { isSafeUrl } from '../services/ssrf.js'
+import { isSafeUrl, assertHostForSourceType } from '../services/ssrf.js'
 import { writeAuditLog } from '../services/audit.js'
+import { checkOrgRateLimit } from '../services/rateLimitOrg.js'
 import type { Prisma } from '@whistling/db'
 
 // Source types that go through Apify (public URL scraping, no OAuth needed)
@@ -49,9 +50,19 @@ export async function sourceRoutes(app: FastifyInstance) {
 
   app.post<{ Params: { businessId: string } }>(
     '/:businessId',
-    { preHandler: [app.authenticate] },
+    {
+      preHandler: [app.authenticate],
+      config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
+    },
     async (req, reply) => {
       const { organizationId, userId } = req.user
+
+      // Per-org hourly cap
+      const orgCheck = await checkOrgRateLimit(app.redis, organizationId, 'source_create')
+      if (!orgCheck.allowed) {
+        return reply.status(429).send({ error: orgCheck.reason })
+      }
+
       const business = await app.db.business.findUnique({
         where: { id: req.params.businessId },
       })
@@ -70,8 +81,15 @@ export async function sourceRoutes(app: FastifyInstance) {
 
       const body = connectSourceSchema.parse(req.body)
 
-      if (body.url && !isSafeUrl(body.url)) {
-        return reply.status(400).send({ error: 'Invalid source URL' })
+      if (body.url) {
+        if (!isSafeUrl(body.url)) {
+          return reply.status(400).send({ error: 'Invalid source URL' })
+        }
+        // Enforce per-source-type platform domain allowlist
+        const allowlistError = assertHostForSourceType(body.url, body.type)
+        if (allowlistError) {
+          return reply.status(400).send({ error: allowlistError })
+        }
       }
 
       // Determine initial status and metadata based on source strategy
@@ -162,9 +180,13 @@ export async function sourceRoutes(app: FastifyInstance) {
   // Trigger manual scan for one source
   app.post<{ Params: { id: string } }>(
     '/:id/scan',
-    { preHandler: [app.authenticate] },
+    {
+      preHandler: [app.authenticate],
+      config: { rateLimit: { max: 10, timeWindow: '1 hour' } },
+    },
     async (req, reply) => {
       const { organizationId, userId } = req.user
+
       const source = await app.db.businessSource.findUnique({
         where: { id: req.params.id },
         include: { business: true },
@@ -172,6 +194,16 @@ export async function sourceRoutes(app: FastifyInstance) {
 
       if (!source || source.business.organizationId !== organizationId) {
         return reply.status(404).send({ error: 'Not found' })
+      }
+
+      // Per-org daily scan cap (per-plan)
+      const sub = await app.db.subscription.findUnique({
+        where: { organizationId },
+        select: { plan: true },
+      })
+      const orgCheck = await checkOrgRateLimit(app.redis, organizationId, 'manual_scan', sub?.plan)
+      if (!orgCheck.allowed) {
+        return reply.status(429).send({ error: orgCheck.reason })
       }
 
       const check = await enforceUsageLimit(

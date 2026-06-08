@@ -1,22 +1,56 @@
-import type { FastifyInstance } from 'fastify'
+import crypto from 'crypto'
+import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 
 // Admin routes require an internal API key — not exposed to regular users.
-// Set ADMIN_API_KEY in env; guard all routes with it.
+// Set ADMIN_API_KEY in env to a 32+ char random string.
+// In production, missing or incorrect key always denies.
+// In development, missing key is allowed (dev convenience) but logs a warning.
 
-function assertAdmin(req: { headers: Record<string, string | string[] | undefined> }, reply: { status: (n: number) => { send: (v: unknown) => unknown } }): boolean {
-  const key = process.env['ADMIN_API_KEY']
-  if (!key) return true // not configured = dev mode, allow
+function assertAdmin(
+  req: FastifyRequest,
+  reply: FastifyReply,
+): boolean {
+  const configuredKey = process.env['ADMIN_API_KEY']
+
+  if (!configuredKey) {
+    if (process.env['NODE_ENV'] === 'production') {
+      // Never allow in production if key is not configured
+      req.log.error({ path: req.url, ip: req.ip }, '[admin] ADMIN_API_KEY not set — rejecting request')
+      reply.status(500).send({ error: 'Admin endpoint not configured' })
+      return false
+    }
+    // Dev-only convenience: allow but warn loudly
+    req.log.warn({ path: req.url }, '[admin] WARNING: ADMIN_API_KEY not set. All admin routes are open. Set it before deploying.')
+    return true
+  }
+
   const provided = req.headers['x-admin-key']
-  if (provided !== key) {
+  if (typeof provided !== 'string' || provided.length === 0) {
+    req.log.warn({ path: req.url, ip: req.ip }, '[admin] Missing x-admin-key header')
     reply.status(401).send({ error: 'Unauthorized' })
     return false
   }
+
+  // Constant-time comparison to prevent timing attacks
+  const expectedBuf = Buffer.from(configuredKey, 'utf8')
+  const providedBuf = Buffer.from(provided, 'utf8')
+  const valid =
+    expectedBuf.length === providedBuf.length &&
+    crypto.timingSafeEqual(expectedBuf, providedBuf)
+
+  if (!valid) {
+    req.log.warn({ path: req.url, ip: req.ip }, '[admin] Invalid x-admin-key')
+    reply.status(401).send({ error: 'Unauthorized' })
+    return false
+  }
+
+  req.log.info({ path: req.url, ip: req.ip }, '[admin] Access granted')
   return true
 }
 
 export async function adminRoutes(app: FastifyInstance) {
   // ── MRR & plan breakdown ──────────────────────────────────────────────────
-  app.get('/mrr', async (req, reply) => {
+  app.get('/mrr', { config: { rateLimit: { max: 20, timeWindow: '1 hour' } } }, async (req, reply) => {
     if (!assertAdmin(req, reply)) return
 
     const plans = await app.db.subscription.groupBy({
@@ -43,7 +77,7 @@ export async function adminRoutes(app: FastifyInstance) {
   })
 
   // ── Provider cost by org ──────────────────────────────────────────────────
-  app.get('/costs', async (req, reply) => {
+  app.get('/costs', { config: { rateLimit: { max: 20, timeWindow: '1 hour' } } }, async (req, reply) => {
     if (!assertAdmin(req, reply)) return
 
     const now = new Date()
@@ -91,7 +125,7 @@ export async function adminRoutes(app: FastifyInstance) {
   })
 
   // ── High-cost orgs ────────────────────────────────────────────────────────
-  app.get('/high-cost', async (req, reply) => {
+  app.get('/high-cost', { config: { rateLimit: { max: 20, timeWindow: '1 hour' } } }, async (req, reply) => {
     if (!assertAdmin(req, reply)) return
 
     const now = new Date()
@@ -133,7 +167,7 @@ export async function adminRoutes(app: FastifyInstance) {
   })
 
   // ── Past-due customers ────────────────────────────────────────────────────
-  app.get('/past-due', async (req, reply) => {
+  app.get('/past-due', { config: { rateLimit: { max: 20, timeWindow: '1 hour' } } }, async (req, reply) => {
     if (!assertAdmin(req, reply)) return
 
     return app.db.subscription.findMany({
@@ -144,7 +178,7 @@ export async function adminRoutes(app: FastifyInstance) {
   })
 
   // ── Failed scans ──────────────────────────────────────────────────────────
-  app.get('/failed-scans', async (req, reply) => {
+  app.get('/failed-scans', { config: { rateLimit: { max: 20, timeWindow: '1 hour' } } }, async (req, reply) => {
     if (!assertAdmin(req, reply)) return
 
     const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
@@ -160,7 +194,7 @@ export async function adminRoutes(app: FastifyInstance) {
   })
 
   // ── Provider run stats ────────────────────────────────────────────────────
-  app.get('/provider-runs', async (req, reply) => {
+  app.get('/provider-runs', { config: { rateLimit: { max: 20, timeWindow: '1 hour' } } }, async (req, reply) => {
     if (!assertAdmin(req, reply)) return
 
     const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)

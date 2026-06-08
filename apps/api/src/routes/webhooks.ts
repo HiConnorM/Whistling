@@ -13,6 +13,66 @@ declare module 'fastify' {
 }
 
 export async function webhookRoutes(app: FastifyInstance) {
+  // ── Apify run-completed webhook ───────────────────────────────────────────
+  app.post<{ Body: { actorRunId?: string; status?: string; datasetId?: string; eventData?: unknown } }>(
+    '/apify',
+    async (req, reply) => {
+      // Verify shared secret (passed as query param or header by Apify)
+      const expectedSecret = process.env['APIFY_WEBHOOK_SECRET']
+      if (expectedSecret) {
+        const provided =
+          (req.headers['x-apify-webhook-secret'] as string | undefined) ??
+          (req.query as Record<string, string>)['secret']
+
+        if (!provided) {
+          req.log.warn({ ip: req.ip }, '[webhook/apify] Missing secret')
+          return reply.status(401).send({ error: 'Unauthorized' })
+        }
+
+        // Constant-time comparison
+        const crypto = await import('crypto')
+        const expectedBuf = Buffer.from(expectedSecret, 'utf8')
+        const providedBuf = Buffer.from(provided, 'utf8')
+        const valid =
+          expectedBuf.length === providedBuf.length &&
+          crypto.timingSafeEqual(expectedBuf, providedBuf)
+
+        if (!valid) {
+          req.log.warn({ ip: req.ip }, '[webhook/apify] Invalid secret')
+          return reply.status(401).send({ error: 'Unauthorized' })
+        }
+      }
+
+      const body = req.body as { actorRunId?: string; status?: string }
+      const runId = body.actorRunId
+      if (!runId) return reply.status(400).send({ error: 'Missing actorRunId' })
+
+      // Idempotency: ignore duplicate delivery
+      const eventId = `apify:run:${runId}`
+      const existing = await app.db.processedWebhookEvent.findUnique({ where: { id: eventId } })
+      if (existing) return { received: true, skipped: true }
+
+      await app.db.processedWebhookEvent.create({
+        data: { id: eventId, provider: 'apify', eventType: `run.${body.status ?? 'unknown'}` },
+      })
+
+      // Update ProviderRun status if we track it
+      if (body.status) {
+        const mapped = body.status.toUpperCase() as 'SUCCEEDED' | 'FAILED' | 'RUNNING' | 'PENDING'
+        await app.db.providerRun.updateMany({
+          where: { runId },
+          data: {
+            status: mapped === 'SUCCEEDED' ? 'COMPLETED' : mapped,
+            finishedAt: mapped === 'SUCCEEDED' || mapped === 'FAILED' ? new Date() : undefined,
+          },
+        })
+      }
+
+      req.log.info({ runId, status: body.status }, '[webhook/apify] Run event processed')
+      return { received: true }
+    },
+  )
+
   app.post(
     '/stripe',
     { config: { rawBody: true } },

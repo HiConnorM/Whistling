@@ -1,14 +1,22 @@
 import type { FastifyInstance } from 'fastify'
-import { z } from 'zod'
 import type { Prisma } from '@whistling/db'
 import { mentionFilterSchema, paginationSchema } from '@whistling/domain'
+import { requireBusinessAccess } from '../services/authz.js'
 
 export async function mentionRoutes(app: FastifyInstance) {
   app.get<{ Querystring: Record<string, string> }>(
     '/',
     { preHandler: [app.authenticate] },
-    async (req) => {
+    async (req, reply) => {
       const filter = mentionFilterSchema.parse(req.query)
+      const { organizationId } = req.user
+
+      // IDOR fix: require and verify businessId belongs to the caller's org
+      if (!filter.businessId) {
+        return reply.status(400).send({ error: 'businessId is required' })
+      }
+      await requireBusinessAccess(app.db, filter.businessId, organizationId)
+
       const { page, limit } = paginationSchema.parse(req.query)
       const skip = (page - 1) * limit
 

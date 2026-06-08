@@ -1,5 +1,8 @@
-import { Redis } from 'ioredis'
 import { db } from '@whistling/db'
+import { parseServerEnv } from '@whistling/config'
+
+// Validate required env vars at startup — fails fast before connecting to Redis/DB
+parseServerEnv(process.env)
 import { startIngestionWorker } from './workers/ingestion.js'
 import { startAnalysisWorker } from './workers/analysis.js'
 import { startClusteringWorker } from './workers/clustering.js'

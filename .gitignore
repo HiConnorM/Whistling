@@ -11,3 +11,18 @@ coverage
 *.log
 prisma/migrations/*.sql.bak
 packages/db/src/generated
+
+# Secrets / certs
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Database files / dumps
+*.sqlite
+*.sqlite3
+*.db
+*.sql.gz
+*.dump
+*.pgdump

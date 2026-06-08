@@ -9,9 +9,15 @@ const serverEnvSchema = z.object({
   // Redis
   REDIS_URL: z.string().url(),
 
-  // Auth (Better Auth)
+  // Auth (Better Auth — web app)
   BETTER_AUTH_SECRET: z.string().min(32),
   BETTER_AUTH_URL: z.string().url(),
+
+  // Auth (API JWT — separate signing secret for Fastify API)
+  API_JWT_SECRET: z.string().min(32),
+
+  // Admin
+  ADMIN_API_KEY: z.string().min(32).optional(),
 
   // Stripe
   STRIPE_SECRET_KEY: z.string().startsWith('sk_'),

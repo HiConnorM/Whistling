@@ -13,7 +13,10 @@
     "db:migrate": "turbo db:migrate",
     "db:push": "turbo db:push",
     "db:studio": "cd packages/db && pnpm db:studio",
-    "clean": "turbo clean && find . -name 'node_modules' -type d -prune -exec rm -rf '{}' +"
+    "clean": "turbo clean && find . -name 'node_modules' -type d -prune -exec rm -rf '{}' +",
+    "audit": "pnpm audit --prod",
+    "lint:secrets": "gitleaks detect --source . --no-git 2>/dev/null || echo 'gitleaks not installed: run brew install gitleaks'",
+    "check:public-keys": "node -e \"const fs=require('fs');const dangerous=['OPENAI_API_KEY','STRIPE_SECRET_KEY','STRIPE_WEBHOOK_SECRET','APIFY_API_TOKEN','ENCRYPTION_KEY','API_JWT_SECRET','ADMIN_API_KEY','RESEND_API_KEY','META_APP_SECRET','BETTER_AUTH_SECRET'];const found=[];require('child_process').execSync('grep -r NEXT_PUBLIC_ apps/web/src --include=*.ts --include=*.tsx -l 2>/dev/null || true',{encoding:'utf8'}).split('\\n').filter(Boolean).forEach(f=>{const c=fs.readFileSync(f,'utf8');dangerous.forEach(k=>{if(c.includes('NEXT_PUBLIC_'+k))found.push(k+' in '+f)})});if(found.length){console.error('\\u274c Server-only secrets found in NEXT_PUBLIC_ context:',found);process.exit(1)}else{console.log('\\u2705 No server-only secrets exposed as NEXT_PUBLIC_')}\""
   },
   "devDependencies": {
     "@types/node": "^20.17.0",

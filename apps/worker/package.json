@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@whistling/config": "workspace:*",
     "@whistling/ai": "workspace:*",
     "@whistling/analysis": "workspace:*",
     "@whistling/connectors": "workspace:*",
