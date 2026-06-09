@@ -62,7 +62,7 @@ export async function webhookRoutes(app: FastifyInstance) {
         await app.db.providerRun.updateMany({
           where: { runId },
           data: {
-            status: mapped === 'SUCCEEDED' ? 'COMPLETED' : mapped,
+            status: mapped,
             finishedAt: mapped === 'SUCCEEDED' || mapped === 'FAILED' ? new Date() : undefined,
           },
         })

@@ -169,7 +169,10 @@ async function scanSourceViaApify(
   }
 
   const actorConfig = APIFY_ACTORS[actorKey]
-  const budget = getScanBudget(scanDepthKey as 'light' | 'standard' | 'deep')
+  const depthBudget = getScanBudget(scanDepthKey as 'light' | 'standard' | 'deep')
+  // Cap the depth-based review budget at the usage-enforced maxItems ceiling so the
+  // actor itself never scrapes more than the plan allows (not just dataset fetch).
+  const budget = { ...depthBudget, maxReviews: Math.min(depthBudget.maxReviews, maxItems) }
 
   // Derive scan / freshness mode — payload values override auto-detection
   const scanMode = payload.scanMode ?? deriveScanMode(source, payload)
