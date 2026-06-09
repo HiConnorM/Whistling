@@ -12,6 +12,7 @@ import {
   APIFY_FAILED_STATUSES,
   APIFY_ACTORS,
   type ActorKey,
+  type FreshnessContext,
 } from '@whistling/connectors'
 import { hashText, isSpamText } from '@whistling/analysis'
 import { getQueue } from '@whistling/jobs'
@@ -19,6 +20,8 @@ import type {
   ScanSourcePayload,
   NormalizeRawItemPayload,
   CollectApifyRunPayload,
+  ScanMode,
+  FreshnessMode,
 } from '@whistling/jobs'
 import { decrypt } from '../services/encryption.js'
 import { recordScanUsage } from '../services/enforcement.js'
@@ -93,6 +96,36 @@ async function scanSource(
   return scanSourceViaConnector(db, source, payload, job)
 }
 
+// ── Freshness helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Derive the scan mode from source history and payload flags.
+ * Callers can override by passing scanMode explicitly in the payload.
+ */
+function deriveScanMode(
+  source: { lastSuccessfulScanAt?: Date | null },
+  payload: { fullRescan?: boolean },
+): ScanMode {
+  if (payload.fullRescan) return 'deep_backfill'
+  if (!source.lastSuccessfulScanAt) return 'initial_backfill'
+  return 'weekly_incremental'
+}
+
+/**
+ * Derive the freshness mode from the scan mode.
+ * - Backfills fetch everything up to the budget.
+ * - Weekly incremental fetches only new content since the last success.
+ * - Manual refresh fetches the latest window regardless of history.
+ */
+function deriveFreshnessMode(scanMode: ScanMode): FreshnessMode {
+  switch (scanMode) {
+    case 'initial_backfill': return 'full_backfill'
+    case 'deep_backfill':    return 'full_backfill'
+    case 'weekly_incremental': return 'since_last_scan'
+    case 'manual_refresh':   return 'latest_first'
+  }
+}
+
 // ── Apify scan path ───────────────────────────────────────────────────────────
 
 async function scanSourceViaApify(
@@ -137,7 +170,16 @@ async function scanSourceViaApify(
 
   const actorConfig = APIFY_ACTORS[actorKey]
   const budget = getScanBudget(scanDepthKey as 'light' | 'standard' | 'deep')
-  const input = buildActorInput(actorKey, source.url, budget, { isCompetitor })
+
+  // Derive scan / freshness mode — payload values override auto-detection
+  const scanMode = payload.scanMode ?? deriveScanMode(source, payload)
+  const freshnessMode = payload.freshnessMode ?? deriveFreshnessMode(scanMode)
+  const since = payload.lastSuccessfulScanAt
+    ? new Date(payload.lastSuccessfulScanAt)
+    : (source.lastSuccessfulScanAt ?? undefined)
+
+  const freshnessCtx: FreshnessContext = { scanMode, freshnessMode, since }
+  const input = buildActorInput(actorKey, source.url, budget, { isCompetitor, freshness: freshnessCtx })
   const estimatedCost = estimateApifyCostCents(actorKey, maxItems)
   const organizationId = source.business.organizationId
   const periodStart = source.business.organization?.subscription?.currentPeriodStart ?? new Date()
@@ -183,6 +225,8 @@ async function scanSourceViaApify(
         maxItems,
         periodStart: periodStart.toISOString(),
         attempt: 0,
+        freshnessMode,
+        lastSuccessfulScanAt: since?.toISOString(),
       } satisfies CollectApifyRunPayload,
       { delay: 60_000 },
     )
@@ -257,9 +301,22 @@ async function collectApifyRun(
   let collected = 0
   const newMentionIds: string[] = []
 
+  const cutoff = payload.lastSuccessfulScanAt ? new Date(payload.lastSuccessfulScanAt) : null
+
   for (const raw of rawItems) {
     const normalized = normalizeApifyItem(actorKey, raw)
     if (!normalized) continue
+
+    // Early-stop for incremental scans: actors sort newest-first, so once we see
+    // an item older than the last successful scan we can skip everything after it.
+    if (
+      payload.freshnessMode === 'since_last_scan' &&
+      cutoff &&
+      normalized.publishedAt &&
+      normalized.publishedAt < cutoff
+    ) {
+      break
+    }
 
     const text = normalized.text
     const textHash = hashText(text)
@@ -327,6 +384,7 @@ async function collectApifyRun(
     where: { id: payload.sourceId },
     data: {
       lastScannedAt: new Date(),
+      lastSuccessfulScanAt: new Date(),
       nextScanAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       totalItemsCollected: { increment: collected },
       errorCount: 0,

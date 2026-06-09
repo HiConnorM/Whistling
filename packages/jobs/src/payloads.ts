@@ -2,6 +2,11 @@ import { z } from 'zod'
 
 // ─── Ingestion Queue ──────────────────────────────────────────────────────────
 
+export const SCAN_MODES = ['initial_backfill', 'weekly_incremental', 'manual_refresh', 'deep_backfill'] as const
+export const FRESHNESS_MODES = ['latest_first', 'since_last_scan', 'full_backfill'] as const
+export type ScanMode = typeof SCAN_MODES[number]
+export type FreshnessMode = typeof FRESHNESS_MODES[number]
+
 export const scanSourcePayload = z.object({
   sourceId: z.string(),
   businessId: z.string(),
@@ -9,6 +14,12 @@ export const scanSourcePayload = z.object({
   fullRescan: z.boolean().default(false),
   maxItems: z.number().int().positive().optional(),
   scanDepth: z.enum(['light', 'standard', 'deep']).optional(),
+  /** Describes the intent of this scan — drives freshness behaviour in the worker. Derived automatically if omitted. */
+  scanMode: z.enum(SCAN_MODES).optional(),
+  /** How to filter/sort results relative to prior scans. Derived from scanMode if omitted. */
+  freshnessMode: z.enum(FRESHNESS_MODES).optional(),
+  /** ISO datetime of the last successful scan — passed as the cutoff for since_last_scan mode. */
+  lastSuccessfulScanAt: z.string().datetime().optional(),
 })
 
 export const normalizeRawItemPayload = z.object({
@@ -28,6 +39,10 @@ export const collectApifyRunPayload = z.object({
   maxItems: z.number().int().positive(),
   periodStart: z.string().datetime(),
   attempt: z.number().int().default(0),
+  /** Passed through so the collection loop can early-stop on stale content. */
+  freshnessMode: z.enum(FRESHNESS_MODES).optional(),
+  /** ISO datetime cutoff — items older than this are skipped in since_last_scan mode. */
+  lastSuccessfulScanAt: z.string().datetime().optional(),
 })
 
 // ─── Analysis Queue ───────────────────────────────────────────────────────────

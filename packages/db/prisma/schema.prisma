@@ -301,6 +301,7 @@ model BusinessSource {
   tokenExpiresAt        DateTime?
   status                SourceStatus @default(PENDING)
   lastScannedAt         DateTime?
+  lastSuccessfulScanAt  DateTime?    // set only on SUCCEEDED runs — used as freshness anchor
   nextScanAt            DateTime?
   cursor                String?
   errorMessage          String?

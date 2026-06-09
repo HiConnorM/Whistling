@@ -219,6 +219,8 @@ export async function sourceRoutes(app: FastifyInstance) {
         sourceId: source.id,
         businessId: source.businessId,
         maxItems: check.maxItemsAllowed,
+        scanMode: 'manual_refresh',
+        freshnessMode: 'latest_first',
       })
 
       await writeAuditLog(app.db, {

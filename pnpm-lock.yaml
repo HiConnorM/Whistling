@@ -334,6 +334,9 @@ importers:
 
   packages/connectors:
     dependencies:
+      '@whistling/jobs':
+        specifier: workspace:*
+        version: link:../jobs
       zod:
         specifier: ^3.24.1
         version: 3.25.76
