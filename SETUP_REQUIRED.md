@@ -91,7 +91,7 @@ Used for scraping Google reviews, Yelp, TripAdvisor, Facebook comments/reviews, 
 | Facebook comments | `apify/facebook-comments-scraper` |
 | Facebook reviews | `apify/facebook-reviews-scraper` |
 | Instagram comments | `apify/instagram-comment-scraper` |
-| Yelp | `delicious_zebu/yelp-reviews-scraper` ($30/month) |
+| Yelp | `tri_angle/yelp-review-scraper` |
 
 **Required env:**
 ```

@@ -27,10 +27,10 @@ export const APIFY_ACTORS: Record<ActorKey, ActorConfig> = {
     costPer1kCents: 50, // ~$0.50 / 1k conservative
   },
   yelpReviews: {
-    actorId: 'delicious_zebu/yelp-reviews-scraper',
+    actorId: 'tri_angle/yelp-review-scraper',
     sourceType: 'yelp',
     mediaType: 'review',
-    costPer1kCents: 60,
+    costPer1kCents: 50,
   },
   tripadvisorReviews: {
     actorId: 'maxcopell/tripadvisor-reviews',
