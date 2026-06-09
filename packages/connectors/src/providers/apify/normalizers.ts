@@ -57,6 +57,10 @@ export function normalizeApifyItem(
 
 // ── Google Maps Reviews ───────────────────────────────────────────────────────
 // compass/google-maps-reviews-scraper output shape
+// Confirmed field names from live run (June 2026):
+//   name (top-level reviewer name), stars, reviewUrl, text, publishedAtDate
+// The actor also nests reviewer info under `reviewer: { name, id }` in some
+// versions — we check both so either format works.
 
 interface GoogleReviewItem {
   reviewId?: string
@@ -65,11 +69,17 @@ interface GoogleReviewItem {
   stars?: number
   rating?: number
   publishedAtDate?: string
+  publishedAt?: string       // alternate date field name in some actor versions
+  /** Top-level reviewer name — the field the actor actually emits as of 2026 */
+  name?: string
+  /** Alternate field name used in older actor versions */
   reviewerName?: string
   reviewerId?: string
-  reviewer?: { name?: string; id?: string }
+  reviewer?: { name?: string; id?: string; url?: string }
   placeId?: string
   placeName?: string
+  title?: string             // place title
+  url?: string               // place URL (not review URL — don't use for url field)
 }
 
 function normalizeGoogleReview(raw: unknown): ApifyNormalizedItem | null {
@@ -77,7 +87,11 @@ function normalizeGoogleReview(raw: unknown): ApifyNormalizedItem | null {
   const text = item.text?.trim()
   if (!text) return null
 
-  const id = item.reviewId ?? stableId('google', item.reviewerName, item.publishedAtDate, text)
+  const authorName = item.name ?? item.reviewerName ?? item.reviewer?.name
+  const authorId = item.reviewerId ?? item.reviewer?.id
+  const dateStr = item.publishedAtDate ?? item.publishedAt
+
+  const id = item.reviewId ?? stableId('google', authorName, dateStr, text)
 
   return {
     externalId: id,
@@ -85,16 +99,16 @@ function normalizeGoogleReview(raw: unknown): ApifyNormalizedItem | null {
     mediaType: 'review',
     text,
     rating: item.stars ?? item.rating,
-    authorName: item.reviewerName ?? item.reviewer?.name,
-    authorId: item.reviewerId ?? item.reviewer?.id,
-    publishedAt: safeDate(item.publishedAtDate),
+    authorName,
+    authorId,
+    publishedAt: safeDate(dateStr),
     url: item.reviewUrl,
     rawJson: raw,
   }
 }
 
 // ── Yelp Reviews ──────────────────────────────────────────────────────────────
-// delicious_zebu/yelp-reviews-scraper output shape
+// tri_angle/yelp-review-scraper output shape
 
 interface YelpReviewItem {
   id?: string
