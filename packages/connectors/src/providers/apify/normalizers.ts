@@ -49,6 +49,9 @@ export function normalizeApifyItem(
       case 'facebookComments':   return normalizeFacebookComment(raw)
       case 'instagramComments':  return normalizeInstagramComment(raw)
       case 'tiktokComments':     return normalizeTikTokComment(raw)
+      // Discovery actors produce posts, not mentions — URL extraction is handled
+      // by extractPostUrls(), not this normalizer.
+      default:                   return null
     }
   } catch {
     return null
@@ -277,6 +280,80 @@ function normalizeInstagramComment(raw: unknown): ApifyNormalizedItem | null {
     parentPostUrl: item.postUrl,
     rawJson: raw,
   }
+}
+
+// ── Discovery URL extraction ──────────────────────────────────────────────────
+// These functions pull the post/video URL out of a discovery actor's output items.
+// They're intentionally defensive — we check multiple field names because actor
+// output schemas vary by version and are confirmed with real output as we test.
+
+/**
+ * Extract post/video URLs from a batch of raw discovery actor items.
+ * Returns only valid-looking URLs; silently drops items with no URL.
+ */
+export function extractPostUrls(actorKey: ActorKey, rawItems: unknown[]): string[] {
+  const urls: string[] = []
+  for (const item of rawItems) {
+    let url: string | null = null
+    switch (actorKey) {
+      case 'facebookPostsDiscovery':
+        url = extractFacebookPostUrl(item)
+        break
+      case 'instagramPostsDiscovery':
+        url = extractInstagramPostUrl(item)
+        break
+      case 'tiktokVideosDiscovery':
+        url = extractTikTokVideoUrl(item)
+        break
+      default:
+        break
+    }
+    if (url) urls.push(url)
+  }
+  return urls
+}
+
+interface FacebookPostItem {
+  url?: string
+  postUrl?: string
+  link?: string
+  timestamp?: string
+  time?: string
+}
+
+function extractFacebookPostUrl(raw: unknown): string | null {
+  const item = raw as FacebookPostItem
+  const url = item.postUrl ?? item.url ?? item.link
+  if (!url || !url.includes('facebook.com')) return null
+  return url
+}
+
+interface InstagramPostItem {
+  url?: string
+  shortCode?: string
+  displayUrl?: string
+  timestamp?: string
+}
+
+function extractInstagramPostUrl(raw: unknown): string | null {
+  const item = raw as InstagramPostItem
+  if (item.url && item.url.includes('instagram.com')) return item.url
+  if (item.shortCode) return `https://www.instagram.com/p/${item.shortCode}/`
+  return null
+}
+
+interface TikTokVideoItem {
+  webVideoUrl?: string
+  videoMeta?: { webVideoUrl?: string }
+  id?: string
+  authorMeta?: { name?: string }
+}
+
+function extractTikTokVideoUrl(raw: unknown): string | null {
+  const item = raw as TikTokVideoItem
+  const url = item.webVideoUrl ?? item.videoMeta?.webVideoUrl
+  if (url && url.includes('tiktok.com')) return url
+  return null
 }
 
 // ── TikTok Comments ───────────────────────────────────────────────────────────

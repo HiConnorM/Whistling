@@ -83,6 +83,11 @@ function toDateString(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
 
+/**
+ * Build the Apify actor input for single-step (review) sources.
+ * Social sources that need a discovery step first should use
+ * buildDiscoveryInput / buildMultiStepCommentsInput instead.
+ */
 export function buildActorInput(
   actorKey: ActorKey,
   sourceUrl: string,
@@ -115,6 +120,9 @@ export function buildActorInput(
       return buildInstagramCommentsInput(sourceUrl, effectiveBudget, freshness)
     case 'tiktokComments':
       return buildTikTokCommentsInput(sourceUrl, effectiveBudget, freshness)
+    default:
+      // Discovery actors are not invoked via buildActorInput
+      throw new Error(`buildActorInput called with discovery actor key: ${actorKey as string}. Use buildDiscoveryInput instead.`)
   }
 }
 
@@ -192,5 +200,115 @@ function buildTikTokCommentsInput(url: string, budget: ScanBudget, freshness: Fr
     postURLs: [url],
     maxComments: effectivePosts * budget.maxCommentsPerPost,
     maxReplies: 0,
+  }
+}
+
+// ── Step 1: Discovery input builders ─────────────────────────────────────────
+// Accept a page/profile URL and return a list of recent post/video URLs.
+
+/**
+ * Build the actor input for a social discovery step (step 1 of a multi-step
+ * ingestion plan). Takes the page/profile URL; the actor returns posts/videos.
+ */
+export function buildDiscoveryInput(
+  actorKey: ActorKey,
+  profileUrl: string,
+  budget: ScanBudget,
+  opts: { isCompetitor?: boolean; freshness?: FreshnessContext } = {},
+): Record<string, unknown> {
+  const freshness: FreshnessContext = opts.freshness ?? {
+    scanMode: 'initial_backfill',
+    freshnessMode: 'full_backfill',
+  }
+
+  // Competitors get a tighter post cap
+  const maxPosts = opts.isCompetitor
+    ? Math.min(resolvePostCap(budget, freshness), 5)
+    : resolvePostCap(budget, freshness)
+
+  switch (actorKey) {
+    case 'facebookPostsDiscovery':
+      return buildFacebookPostsDiscoveryInput(profileUrl, maxPosts, freshness)
+    case 'instagramPostsDiscovery':
+      return buildInstagramPostsDiscoveryInput(profileUrl, maxPosts)
+    case 'tiktokVideosDiscovery':
+      return buildTikTokVideosDiscoveryInput(profileUrl, maxPosts)
+    default:
+      throw new Error(`buildDiscoveryInput called with non-discovery actor key: ${actorKey as string}`)
+  }
+}
+
+function buildFacebookPostsDiscoveryInput(
+  pageUrl: string,
+  maxPosts: number,
+  freshness: FreshnessContext,
+) {
+  return {
+    startUrls: [{ url: pageUrl }],
+    resultsLimit: maxPosts,
+    // For incremental scans, ask for posts only since the last run
+    ...(freshness.freshnessMode === 'since_last_scan' && freshness.since
+      ? { startDate: toDateString(freshness.since) }
+      : {}),
+    scrapeAbout: false,
+    scrapeReviews: false,
+    scrapeEvents: false,
+  }
+}
+
+function buildInstagramPostsDiscoveryInput(profileUrl: string, maxPosts: number) {
+  return {
+    directUrls: [profileUrl],
+    resultsType: 'posts',
+    resultsLimit: maxPosts,
+    addParentData: false,
+  }
+}
+
+function buildTikTokVideosDiscoveryInput(profileUrl: string, maxPosts: number) {
+  return {
+    profiles: [profileUrl],
+    resultsPerPage: maxPosts,
+    shouldDownloadVideos: false,
+    shouldDownloadCovers: false,
+    shouldDownloadSubtitles: false,
+    shouldDownloadSlideshowImages: false,
+  }
+}
+
+// ── Step 2: Multi-step comment input builders ─────────────────────────────────
+// Accept an array of discovered post/video URLs and return comment inputs.
+
+/**
+ * Build the actor input for the comments step of a multi-step social plan.
+ * `postUrls` are the URLs discovered in step 1.
+ * `maxCommentsPerPost` comes from the plan budget.
+ */
+export function buildMultiStepCommentsInput(
+  actorKey: ActorKey,
+  postUrls: string[],
+  maxCommentsPerPost: number,
+): Record<string, unknown> {
+  switch (actorKey) {
+    case 'facebookComments':
+      return {
+        startUrls: postUrls.map((url) => ({ url })),
+        maxComments: maxCommentsPerPost,
+        includeNestedComments: false,
+      }
+    case 'instagramComments':
+      return {
+        directUrls: postUrls,
+        maxComments: maxCommentsPerPost,
+        commentsMode: 'RECENT_COMMENTS',
+      }
+    case 'tiktokComments':
+      return {
+        postURLs: postUrls,
+        maxComments: maxCommentsPerPost,
+        maxReplies: 0,
+      }
+    default:
+      throw new Error(`buildMultiStepCommentsInput called with unexpected actor key: ${actorKey as string}`)
   }
 }

@@ -5,14 +5,20 @@ import {
   getApifyClient,
   actorKeyForSource,
   buildActorInput,
+  buildDiscoveryInput,
+  buildMultiStepCommentsInput,
+  extractPostUrls,
   getScanBudget,
   normalizeApifyItem,
   estimateApifyCostCents,
   APIFY_TERMINAL_STATUSES,
   APIFY_FAILED_STATUSES,
   APIFY_ACTORS,
+  INGESTION_PLANS,
+  isIngestionPlan,
   type ActorKey,
   type FreshnessContext,
+  type IngestionPlan,
 } from '@whistling/connectors'
 import { hashText, isSpamText } from '@whistling/analysis'
 import { getQueue } from '@whistling/jobs'
@@ -168,6 +174,13 @@ async function scanSourceViaApify(
     return { error: 'No source URL' }
   }
 
+  // ── Check for multi-step social ingestion plan ────────────────────────────
+  const ingestionPlan = meta?.['ingestionPlan'] as string | undefined
+  if (ingestionPlan && isIngestionPlan(ingestionPlan)) {
+    return launchSocialDiscovery(db, source, payload, maxItems, connection, ingestionPlan)
+  }
+
+  // ── Single-step flow (reviews + direct comment URLs) ─────────────────────
   const actorConfig = APIFY_ACTORS[actorKey]
   const depthBudget = getScanBudget(scanDepthKey as 'light' | 'standard' | 'deep')
   // Cap the depth-based review budget at the usage-enforced maxItems ceiling so the
@@ -256,6 +269,130 @@ async function scanSourceViaApify(
   }
 }
 
+// ── Social multi-step plan: launch discovery ──────────────────────────────────
+
+type ApifySource = Awaited<ReturnType<PrismaClient['businessSource']['findUnique']>> & {
+  business: {
+    id: string
+    organizationId: string
+    organization: {
+      id: string
+      subscription: { currentPeriodStart: Date | null } | null
+    } | null
+  }
+}
+
+async function launchSocialDiscovery(
+  db: PrismaClient,
+  source: ApifySource,
+  payload: ScanSourcePayload,
+  maxItems: number,
+  connection: ConnectionOptions,
+  ingestionPlan: IngestionPlan,
+) {
+  if (!source) return { skipped: true }
+
+  const plan = INGESTION_PLANS[ingestionPlan]
+  const meta = source.metadata as Record<string, unknown> | null
+  const scanDepthKey = (meta?.['scanDepth'] as string | undefined) ?? 'standard'
+  const isCompetitor = !!(meta?.['isCompetitor'] as boolean | undefined)
+
+  if (!source.url) {
+    await db.businessSource.update({
+      where: { id: source.id },
+      data: { errorMessage: 'Source URL is required for social discovery scans', status: 'ERROR' },
+    })
+    return { error: 'No source URL' }
+  }
+
+  const depthBudget = getScanBudget(scanDepthKey as 'light' | 'standard' | 'deep')
+  const scanMode = payload.scanMode ?? deriveScanMode(source, payload)
+  const freshnessMode = payload.freshnessMode ?? deriveFreshnessMode(scanMode)
+  const since = payload.lastSuccessfulScanAt
+    ? new Date(payload.lastSuccessfulScanAt)
+    : (source.lastSuccessfulScanAt ?? undefined)
+  const freshnessCtx: FreshnessContext = { scanMode, freshnessMode, since }
+
+  const discoveryActorKey = plan.discoveryActorKey
+  const discoveryActorConfig = APIFY_ACTORS[discoveryActorKey]
+  const discoveryInput = buildDiscoveryInput(discoveryActorKey, source.url, depthBudget, {
+    isCompetitor,
+    freshness: freshnessCtx,
+  })
+
+  const organizationId = source.business.organizationId
+  const periodStart = source.business.organization?.subscription?.currentPeriodStart ?? new Date()
+  const estimatedCost = estimateApifyCostCents(discoveryActorKey, depthBudget.maxPosts)
+
+  const providerRun = await db.providerRun.create({
+    data: {
+      organizationId,
+      businessId: source.business.id,
+      sourceId: source.id,
+      provider: 'apify',
+      actorId: discoveryActorConfig.actorId,
+      status: 'PENDING',
+      requestedMaxItems: depthBudget.maxPosts,
+      estimatedCostCents: estimatedCost,
+    },
+  })
+
+  try {
+    const client = getApifyClient()
+    const { data: run } = await client.runActor(discoveryActorConfig.actorId, discoveryInput)
+
+    await db.providerRun.update({
+      where: { id: providerRun.id },
+      data: { runId: run.id, datasetId: run.defaultDatasetId, status: 'RUNNING' },
+    })
+
+    await db.businessSource.update({
+      where: { id: source.id },
+      data: { errorMessage: null },
+    })
+
+    const queue = getQueue('ingestion', connection)
+    await queue.add(
+      'collect-apify-run',
+      {
+        providerRunId: providerRun.id,
+        apifyRunId: run.id,
+        datasetId: run.defaultDatasetId,
+        sourceId: source.id,
+        businessId: source.business.id,
+        organizationId,
+        actorKey: discoveryActorKey,
+        maxItems,
+        periodStart: periodStart.toISOString(),
+        attempt: 0,
+        step: 'discover',
+        ingestionPlan,
+        maxCommentsPerPost: depthBudget.maxCommentsPerPost,
+        freshnessMode,
+        lastSuccessfulScanAt: since?.toISOString(),
+      } satisfies CollectApifyRunPayload,
+      { delay: 60_000 },
+    )
+
+    return { queued: true, runId: run.id, step: 'discover' }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    await db.providerRun.update({
+      where: { id: providerRun.id },
+      data: { status: 'FAILED', errorMessage: msg, finishedAt: new Date() },
+    })
+    await db.businessSource.update({
+      where: { id: source.id },
+      data: {
+        errorMessage: msg,
+        errorCount: { increment: 1 },
+        status: (source.errorCount ?? 0) >= 4 ? 'ERROR' : 'CONNECTED',
+      },
+    })
+    throw err
+  }
+}
+
 // ── collect-apify-run ─────────────────────────────────────────────────────────
 
 async function collectApifyRun(
@@ -297,7 +434,12 @@ async function collectApifyRun(
     return { failed: true, status: runStatus.status }
   }
 
-  // SUCCEEDED — fetch and ingest dataset items
+  // SUCCEEDED — route to discovery or comments handler
+  if (payload.step === 'discover') {
+    return collectDiscoveryRun(db, payload, connection)
+  }
+
+  // Normal / comments step
   const rawItems = await client.getDatasetItems(payload.datasetId, payload.maxItems)
   const actorKey = payload.actorKey as ActorKey
 
@@ -414,6 +556,98 @@ async function collectApifyRun(
   }
 
   return { collected, newMentions: newMentionIds.length }
+}
+
+// ── Social multi-step plan: after discovery succeeds ─────────────────────────
+
+async function collectDiscoveryRun(
+  db: PrismaClient,
+  payload: CollectApifyRunPayload,
+  connection: ConnectionOptions,
+) {
+  const client = getApifyClient()
+
+  // Fetch discovered post/video items — use a generous cap; we only need URLs
+  const rawItems = await client.getDatasetItems(payload.datasetId, payload.maxItems)
+  const actorKey = payload.actorKey as ActorKey
+  const postUrls = extractPostUrls(actorKey, rawItems)
+
+  // Mark discovery ProviderRun as succeeded
+  await db.providerRun.update({
+    where: { id: payload.providerRunId },
+    data: { status: 'SUCCEEDED', collectedItems: postUrls.length, finishedAt: new Date() },
+  })
+
+  if (postUrls.length === 0) {
+    // Nothing discovered — still a successful scan, just no new posts
+    await db.businessSource.update({
+      where: { id: payload.sourceId },
+      data: {
+        lastScannedAt: new Date(),
+        lastSuccessfulScanAt: new Date(),
+        errorCount: 0,
+        errorMessage: null,
+      },
+    })
+    return { discovered: 0 }
+  }
+
+  // Resolve the comments actor from the ingestion plan
+  const planKey = payload.ingestionPlan
+  if (!planKey || !isIngestionPlan(planKey)) {
+    throw new Error(`Invalid ingestionPlan in discovery payload: ${planKey ?? '(missing)'}`)
+  }
+  const plan = INGESTION_PLANS[planKey]
+  const commentsActorKey = plan.commentsActorKey
+  const commentsActorConfig = APIFY_ACTORS[commentsActorKey]
+  const maxCommentsPerPost = payload.maxCommentsPerPost ?? 75
+
+  const commentsInput = buildMultiStepCommentsInput(commentsActorKey, postUrls, maxCommentsPerPost)
+  const estimatedCost = estimateApifyCostCents(commentsActorKey, postUrls.length * maxCommentsPerPost)
+
+  const commentsProviderRun = await db.providerRun.create({
+    data: {
+      organizationId: payload.organizationId,
+      businessId: payload.businessId,
+      sourceId: payload.sourceId,
+      provider: 'apify',
+      actorId: commentsActorConfig.actorId,
+      status: 'PENDING',
+      requestedMaxItems: postUrls.length * maxCommentsPerPost,
+      estimatedCostCents: estimatedCost,
+    },
+  })
+
+  const { data: commentsRun } = await client.runActor(commentsActorConfig.actorId, commentsInput)
+
+  await db.providerRun.update({
+    where: { id: commentsProviderRun.id },
+    data: { runId: commentsRun.id, datasetId: commentsRun.defaultDatasetId, status: 'RUNNING' },
+  })
+
+  const queue = getQueue('ingestion', connection)
+  await queue.add(
+    'collect-apify-run',
+    {
+      providerRunId: commentsProviderRun.id,
+      apifyRunId: commentsRun.id,
+      datasetId: commentsRun.defaultDatasetId,
+      sourceId: payload.sourceId,
+      businessId: payload.businessId,
+      organizationId: payload.organizationId,
+      actorKey: commentsActorKey,
+      maxItems: payload.maxItems,
+      periodStart: payload.periodStart,
+      attempt: 0,
+      step: 'comments',
+      ingestionPlan: planKey,
+      freshnessMode: payload.freshnessMode,
+      lastSuccessfulScanAt: payload.lastSuccessfulScanAt,
+    } satisfies CollectApifyRunPayload,
+    { delay: 60_000 },
+  )
+
+  return { discovered: postUrls.length, commentsRunId: commentsRun.id }
 }
 
 // ── Legacy connector scan path ────────────────────────────────────────────────

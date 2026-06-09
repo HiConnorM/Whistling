@@ -43,6 +43,13 @@ export const collectApifyRunPayload = z.object({
   freshnessMode: z.enum(FRESHNESS_MODES).optional(),
   /** ISO datetime cutoff — items older than this are skipped in since_last_scan mode. */
   lastSuccessfulScanAt: z.string().datetime().optional(),
+  // ── Multi-step social ingestion ──────────────────────────────────────────
+  /** Which step of a multi-step ingestion plan this run represents. */
+  step: z.enum(['discover', 'comments']).optional(),
+  /** The ingestion plan key (e.g. 'facebookPageComments') — carried through both steps. */
+  ingestionPlan: z.string().optional(),
+  /** Max comments per post — set in the discover step, consumed in the comments step. */
+  maxCommentsPerPost: z.number().int().positive().optional(),
 })
 
 // ─── Analysis Queue ───────────────────────────────────────────────────────────

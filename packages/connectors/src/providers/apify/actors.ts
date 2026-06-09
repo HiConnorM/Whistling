@@ -8,8 +8,12 @@ export type ActorKey =
   | 'facebookComments'
   | 'instagramComments'
   | 'tiktokComments'
+  // ── Discovery actors (step 1 of social multi-step plans) ──────────────────
+  | 'facebookPostsDiscovery'
+  | 'instagramPostsDiscovery'
+  | 'tiktokVideosDiscovery'
 
-export type MediaType = 'review' | 'comment'
+export type MediaType = 'review' | 'comment' | 'post'
 
 export interface ActorConfig {
   actorId: string
@@ -24,7 +28,7 @@ export const APIFY_ACTORS: Record<ActorKey, ActorConfig> = {
     actorId: 'compass/google-maps-reviews-scraper',
     sourceType: 'google',
     mediaType: 'review',
-    costPer1kCents: 50, // ~$0.50 / 1k conservative
+    costPer1kCents: 50,
   },
   yelpReviews: {
     actorId: 'tri_angle/yelp-review-scraper',
@@ -36,13 +40,13 @@ export const APIFY_ACTORS: Record<ActorKey, ActorConfig> = {
     actorId: 'maxcopell/tripadvisor-reviews',
     sourceType: 'tripadvisor',
     mediaType: 'review',
-    costPer1kCents: 120, // $0.90+ / 1k
+    costPer1kCents: 120,
   },
   facebookReviews: {
     actorId: 'apify/facebook-reviews-scraper',
     sourceType: 'facebook',
     mediaType: 'review',
-    costPer1kCents: 250, // $2.50 / 1k conservative
+    costPer1kCents: 250,
   },
   facebookComments: {
     actorId: 'apify/facebook-comments-scraper',
@@ -54,19 +58,76 @@ export const APIFY_ACTORS: Record<ActorKey, ActorConfig> = {
     actorId: 'apify/instagram-comment-scraper',
     sourceType: 'instagram',
     mediaType: 'comment',
-    costPer1kCents: 250, // $1.90+ / 1k
+    costPer1kCents: 250,
   },
   tiktokComments: {
     actorId: 'clockworks/tiktok-comments-scraper',
     sourceType: 'tiktok',
     mediaType: 'comment',
-    costPer1kCents: 500, // up to $5 / 1k per FAQ
+    costPer1kCents: 500,
   },
+  // ── Discovery actors ────────────────────────────────────────────────────────
+  facebookPostsDiscovery: {
+    actorId: 'apify/facebook-posts-scraper',
+    sourceType: 'facebook',
+    mediaType: 'post',
+    costPer1kCents: 200,
+  },
+  instagramPostsDiscovery: {
+    actorId: 'apify/instagram-post-scraper',
+    sourceType: 'instagram',
+    mediaType: 'post',
+    costPer1kCents: 150,
+  },
+  tiktokVideosDiscovery: {
+    actorId: 'clockworks/tiktok-scraper',
+    sourceType: 'tiktok',
+    mediaType: 'post',
+    costPer1kCents: 100,
+  },
+}
+
+// ── Ingestion plans (multi-step social pipelines) ─────────────────────────────
+
+/**
+ * A multi-step ingestion plan chains a discovery actor (finds recent
+ * posts/videos from a profile URL) with a comment actor (fetches comments
+ * from those discovered post URLs).
+ *
+ * Users paste a single page/profile URL; Whistling handles the rest.
+ */
+export type IngestionPlan =
+  | 'facebookPageComments'
+  | 'instagramProfileComments'
+  | 'tiktokProfileComments'
+
+export interface IngestionPlanConfig {
+  discoveryActorKey: ActorKey
+  commentsActorKey: ActorKey
+}
+
+export const INGESTION_PLANS: Record<IngestionPlan, IngestionPlanConfig> = {
+  facebookPageComments: {
+    discoveryActorKey: 'facebookPostsDiscovery',
+    commentsActorKey: 'facebookComments',
+  },
+  instagramProfileComments: {
+    discoveryActorKey: 'instagramPostsDiscovery',
+    commentsActorKey: 'instagramComments',
+  },
+  tiktokProfileComments: {
+    discoveryActorKey: 'tiktokVideosDiscovery',
+    commentsActorKey: 'tiktokComments',
+  },
+}
+
+export function isIngestionPlan(value: string): value is IngestionPlan {
+  return value in INGESTION_PLANS
 }
 
 /**
  * Derive the actor key from a BusinessSource's sourceType.
- * A source may have a mediaType preference in metadata (e.g. 'comment' vs 'review' for Facebook).
+ * Only used for single-step sources — multi-step sources use ingestionPlanForSource.
  */
 export function actorKeyForSource(
   sourceType: string,
