@@ -1,0 +1,7 @@
+[
+  {
+    "_STUB": "Replace this file with real output from a live apify/facebook-posts-scraper run.",
+    "_HOW": "In Apify dashboard: run the actor against a Facebook page, then Export > JSON > paste here.",
+    "_FIELDS_TO_CONFIRM": ["url", "postUrl", "link", "timestamp", "time"]
+  }
+]

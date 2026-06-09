@@ -1,0 +1,7 @@
+[
+  {
+    "_STUB": "Replace this file with real output from a live clockworks/tiktok-scraper run.",
+    "_HOW": "In Apify dashboard: run the actor against a TikTok profile, then Export > JSON > paste here.",
+    "_FIELDS_TO_CONFIRM": ["webVideoUrl", "videoMeta.webVideoUrl", "id", "authorMeta"]
+  }
+]

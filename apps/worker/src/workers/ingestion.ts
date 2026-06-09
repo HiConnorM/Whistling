@@ -154,7 +154,7 @@ async function scanSourceViaApify(
 
   const meta = source.metadata as Record<string, unknown> | null
   const mediaType = (meta?.['mediaType'] as string | undefined) ?? 'review'
-  const scanDepthKey = (meta?.['scanDepth'] as string | undefined) ?? 'standard'
+  const scanDepthKey = payload.scanDepth ?? (meta?.['scanDepth'] as string | undefined) ?? 'light'
   const isCompetitor = !!(meta?.['isCompetitor'] as boolean | undefined)
   const actorKey = actorKeyForSource(source.type, mediaType)
 
@@ -294,7 +294,7 @@ async function launchSocialDiscovery(
 
   const plan = INGESTION_PLANS[ingestionPlan]
   const meta = source.metadata as Record<string, unknown> | null
-  const scanDepthKey = (meta?.['scanDepth'] as string | undefined) ?? 'standard'
+  const scanDepthKey = payload.scanDepth ?? (meta?.['scanDepth'] as string | undefined) ?? 'light'
   const isCompetitor = !!(meta?.['isCompetitor'] as boolean | undefined)
 
   if (!source.url) {

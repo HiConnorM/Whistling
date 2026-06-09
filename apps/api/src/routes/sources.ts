@@ -114,6 +114,13 @@ export async function sourceRoutes(app: FastifyInstance) {
         })
         const { scanDepth, maxItems } = createScanBudget(sub?.plan ?? 'STARTER')
 
+        // Multi-step social comment sources: page/profile URL → discover posts → scrape comments
+        const ingestionPlan: string | undefined =
+          sourceType === 'facebook' && mediaType === 'comment' ? 'facebookPageComments' :
+          sourceType === 'instagram' && mediaType === 'comment' ? 'instagramProfileComments' :
+          sourceType === 'tiktok' && mediaType === 'comment' ? 'tiktokProfileComments' :
+          undefined
+
         metadata = {
           strategy: 'apify',
           actorKey,
@@ -121,6 +128,7 @@ export async function sourceRoutes(app: FastifyInstance) {
           mediaType,
           scanDepth,
           maxItems,
+          ...(ingestionPlan ? { ingestionPlan } : {}),
         }
         initialStatus = 'CONNECTED'
       } else if (MANUAL_SOURCE_TYPES.has(sourceType)) {
@@ -215,10 +223,12 @@ export async function sourceRoutes(app: FastifyInstance) {
         return reply.status(402).send({ error: check.reason, upgradeRequired: check.upgradeRequired })
       }
 
+      const sourceMeta = source.metadata as Record<string, unknown> | null
       await app.queues.ingestion.add('scan-source', {
         sourceId: source.id,
         businessId: source.businessId,
         maxItems: check.maxItemsAllowed,
+        scanDepth: (sourceMeta?.['scanDepth'] as 'light' | 'standard' | 'deep' | undefined),
         scanMode: 'manual_refresh',
         freshnessMode: 'latest_first',
       })
