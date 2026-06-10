@@ -18,7 +18,7 @@ Tests the full pipeline: **page/profile URL → discover posts → scrape commen
 ### 1a. Create a BusinessSource via the API
 
 ```bash
-curl -X POST http://localhost:3001/api/businesses/<businessId>/sources \
+curl -X POST http://localhost:3001/api/sources/<businessId> \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -44,17 +44,17 @@ curl -X POST http://localhost:3001/api/businesses/<businessId>/sources \
 ### 1b. Trigger a manual scan
 
 ```bash
-curl -X POST http://localhost:3001/api/businesses/<businessId>/sources/<sourceId>/scan \
+curl -X POST http://localhost:3001/api/sources/<sourceId>/scan \
   -H "Authorization: Bearer <token>"
 ```
 
 ### 1c. Verify discovery ProviderRun
 
 ```sql
-SELECT id, actor_id, status, requested_max_items, collected_items
+SELECT id, "actorId", status, "requestedMaxItems", "collectedItems"
 FROM provider_runs
-WHERE source_id = '<sourceId>'
-ORDER BY started_at DESC;
+WHERE "sourceId" = '<sourceId>'
+ORDER BY "startedAt" DESC;
 ```
 
 Expected:
@@ -64,19 +64,19 @@ Expected:
 ### 1d. Verify Mentions were created
 
 ```sql
-SELECT id, source_type, author_name, rating, published_at, text
+SELECT id, "sourceType", "authorName", rating, "publishedAt", text
 FROM mentions
-WHERE business_id = '<businessId>' AND source_type = 'FACEBOOK'
-ORDER BY published_at DESC
+WHERE "businessId" = '<businessId>' AND "sourceType" = 'FACEBOOK'
+ORDER BY "publishedAt" DESC
 LIMIT 20;
 ```
 
-Expected: rows with `source_type = 'FACEBOOK'`, populated `text`, `author_name`.
+Expected: rows with `sourceType = 'FACEBOOK'`, populated `text`, `authorName`.
 
 ### 1e. Verify `lastSuccessfulScanAt` was written
 
 ```sql
-SELECT id, last_scanned_at, last_successful_scan_at
+SELECT id, "lastScannedAt", "lastSuccessfulScanAt"
 FROM business_sources
 WHERE id = '<sourceId>';
 ```
@@ -117,27 +117,29 @@ These should continue to work without an ingestion plan:
 
 ---
 
-## 5. extractPostUrls — unit test with sample fixtures
+## 5. extractPostUrls — unit tests with sample fixtures
 
-Once you've run a real discovery actor, save the dataset output to:
+Unit tests live at `packages/connectors/src/providers/apify/__tests__/normalizers.test.ts`:
+
+```bash
+pnpm --filter @whistling/connectors test
+```
+
+The extractor logic is covered by inline samples today. Three fixture-driven tests are
+marked **todo** until you replace the stub fixtures with real actor output:
+
 ```
 packages/connectors/src/providers/apify/fixtures/
-  facebook-posts-discovery.sample.json
-  instagram-posts-discovery.sample.json
-  tiktok-videos-discovery.sample.json
+  facebook-posts-discovery.sample.json     ← paste apify/facebook-posts-scraper dataset JSON
+  instagram-posts-discovery.sample.json    ← paste apify/instagram-post-scraper dataset JSON
+  tiktok-videos-discovery.sample.json      ← paste clockworks/tiktok-scraper dataset JSON
 ```
 
-Then validate extraction manually:
-```ts
-import { extractPostUrls } from '@whistling/connectors'
-import facebookSample from './fixtures/facebook-posts-discovery.sample.json'
-
-const urls = extractPostUrls('facebookPostsDiscovery', facebookSample)
-console.log(urls) // should be an array of https://www.facebook.com/... post URLs
-```
-
-If any URLs come back empty, check the raw item fields and update the extractors in
-`packages/connectors/src/providers/apify/normalizers.ts`.
+For each: run the actor in the Apify console against a public page/profile, then
+Storage → Dataset → Export → JSON, and paste the array over the stub. The todo tests
+activate automatically. If extraction returns no URLs, check the raw item fields and
+update the extractors in `packages/connectors/src/providers/apify/normalizers.ts`.
+Never include API tokens or private data in fixtures.
 
 ---
 

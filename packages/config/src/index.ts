@@ -19,9 +19,9 @@ const serverEnvSchema = z.object({
   // Admin
   ADMIN_API_KEY: z.string().min(32).optional(),
 
-  // Stripe
-  STRIPE_SECRET_KEY: z.string().startsWith('sk_'),
-  STRIPE_WEBHOOK_SECRET: z.string().startsWith('whsec_'),
+  // Stripe — optional in development, required in production (see superRefine below)
+  STRIPE_SECRET_KEY: z.string().startsWith('sk_').optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().startsWith('whsec_').optional(),
 
   // Apify
   APIFY_API_TOKEN: z.string().optional(),
@@ -35,8 +35,8 @@ const serverEnvSchema = z.object({
   OPENAI_RESPONDER_MODEL: z.string().default('gpt-4o-mini'),
   OPENAI_CLASSIFICATION_MODEL: z.string().default('gpt-4o-mini'),
 
-  // Resend
-  RESEND_API_KEY: z.string().startsWith('re_'),
+  // Resend — optional in development, required in production (see superRefine below)
+  RESEND_API_KEY: z.string().startsWith('re_').optional(),
   EMAIL_FROM: z.string().email().default('intelligence@whistling.io'),
 
   // Encryption (for OAuth tokens at rest)
@@ -69,6 +69,20 @@ const serverEnvSchema = z.object({
 
   // Worker
   WORKER_CONCURRENCY: z.coerce.number().default(5),
+}).superRefine((env, ctx) => {
+  // Billing and email are optional for local development but must be configured
+  // before deploying: payments and report delivery cannot run without them.
+  if (env.NODE_ENV === 'production') {
+    for (const key of ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'RESEND_API_KEY'] as const) {
+      if (!env[key]) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [key],
+          message: `${key} is required in production`,
+        })
+      }
+    }
+  }
 })
 
 const clientEnvSchema = z.object({
@@ -83,8 +97,13 @@ const clientEnvSchema = z.object({
 export type ServerEnv = z.infer<typeof serverEnvSchema>
 export type ClientEnv = z.infer<typeof clientEnvSchema>
 
+/** Treat blank values as unset — `.env` files leave optional vars empty (`KEY=`). */
+function stripEmpty(env: Record<string, string | undefined>): Record<string, string | undefined> {
+  return Object.fromEntries(Object.entries(env).filter(([, v]) => v !== ''))
+}
+
 export function parseServerEnv(env: NodeJS.ProcessEnv): ServerEnv {
-  const result = serverEnvSchema.safeParse(env)
+  const result = serverEnvSchema.safeParse(stripEmpty(env))
   if (!result.success) {
     console.error('Invalid server environment variables:')
     for (const err of result.error.errors) {
@@ -96,7 +115,7 @@ export function parseServerEnv(env: NodeJS.ProcessEnv): ServerEnv {
 }
 
 export function parseClientEnv(env: Record<string, string | undefined>): ClientEnv {
-  const result = clientEnvSchema.safeParse(env)
+  const result = clientEnvSchema.safeParse(stripEmpty(env))
   if (!result.success) {
     console.error('Invalid client environment variables:')
     for (const err of result.error.errors) {

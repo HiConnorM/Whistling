@@ -4,6 +4,38 @@ External accounts and environment variables needed before the app runs in produc
 
 ---
 
+## 0. Local development (minimum viable .env)
+
+Copy `.env.example` to `.env` — **`.env` is git-ignored and must never be committed.**
+
+For local development only these are required:
+
+| Var | Purpose |
+|-----|---------|
+| `DATABASE_URL` | matches `infra/docker-compose.yml` defaults |
+| `REDIS_URL` | matches docker compose defaults |
+| `BETTER_AUTH_SECRET` | any 32+ char string |
+| `API_JWT_SECRET` | any 32+ char string (web → API auth bridge) |
+| `ENCRYPTION_KEY` | 64 hex chars |
+| `APIFY_API_TOKEN` | only when testing real scans (see `TEST_INGESTION.md`) |
+| `OPENAI_API_KEY` | only when testing AI classification/reports |
+
+**Optional in development, required in production:** `STRIPE_SECRET_KEY`,
+`STRIPE_WEBHOOK_SECRET`, `RESEND_API_KEY` (enforced by `packages/config` env
+validation — the API boots without them in dev; checkout/email features return
+errors until configured).
+
+**Always optional:** `GOOGLE_PLACES_API_KEY` — without it, competitor discovery
+returns no auto-suggestions and users add competitors manually.
+
+```bash
+docker compose -f infra/docker-compose.yml up -d
+cd packages/db && pnpm prisma migrate dev && pnpm prisma generate && cd ../..
+pnpm dev   # web :3000 · api :3001 · worker
+```
+
+---
+
 ## 1. Database
 
 | Step | Command |

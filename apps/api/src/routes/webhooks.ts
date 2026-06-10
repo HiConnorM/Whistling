@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify'
+import rawBody from 'fastify-raw-body'
 import Stripe from 'stripe'
 import { planFromPriceId, getPlanLimits } from '@whistling/domain'
 import { writeAuditLog } from '../services/audit.js'
@@ -7,12 +8,18 @@ declare module 'fastify' {
   interface FastifyContextConfig {
     rawBody?: boolean
   }
-  interface FastifyRequest {
-    rawBody?: Buffer
-  }
 }
 
 export async function webhookRoutes(app: FastifyInstance) {
+  // Stripe signature verification needs the exact request bytes — routes opt in
+  // via config.rawBody (scoped to this plugin, not global).
+  await app.register(rawBody, {
+    global: false,
+    field: 'rawBody',
+    encoding: false, // keep as Buffer for stripe.webhooks.constructEvent
+    runFirst: true,
+  })
+
   // ── Apify run-completed webhook ───────────────────────────────────────────
   app.post<{ Body: { actorRunId?: string; status?: string; datasetId?: string; eventData?: unknown } }>(
     '/apify',

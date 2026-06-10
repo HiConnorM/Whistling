@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { getLatestReport, getReportHistory } from '@whistling/db'
 import { requireBusinessAccess, requireReportAccess } from '../services/authz.js'
+import { enforceUsageLimit } from '../services/enforcement.js'
 
 export async function reportRoutes(app: FastifyInstance) {
   // List reports for a business
@@ -54,6 +55,15 @@ export async function reportRoutes(app: FastifyInstance) {
     },
     async (req, reply) => {
       const business = await requireBusinessAccess(app.db, req.params.businessId, req.user.organizationId)
+
+      const check = await enforceUsageLimit(
+        app.db,
+        { organizationId: req.user.organizationId, businessId: business.id },
+        'generate_report',
+      )
+      if (!check.allowed) {
+        return reply.status(402).send({ error: check.reason, upgradeRequired: check.upgradeRequired })
+      }
 
       const now = new Date()
       const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)

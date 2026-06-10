@@ -40,6 +40,8 @@ export async function sourceRoutes(app: FastifyInstance) {
           totalItemsCollected: true,
           errorMessage: true,
           createdAt: true,
+          // Owner-visible scan config (mediaType, ingestionPlan, scanDepth) — no secrets live here
+          metadata: true,
         },
         orderBy: { createdAt: 'asc' },
       })
@@ -102,7 +104,11 @@ export async function sourceRoutes(app: FastifyInstance) {
           return reply.status(400).send({ error: `A URL is required for ${sourceType} sources` })
         }
 
-        const mediaType = body.mediaType ?? 'review'
+        // Instagram and TikTok have no review product — their only ingestible
+        // media is comments, so default them to the multi-step comment plan.
+        const mediaType =
+          body.mediaType ??
+          (sourceType === 'instagram' || sourceType === 'tiktok' ? 'comment' : 'review')
         const actorKey = actorKeyForSource(sourceType, mediaType)
         if (!actorKey) {
           return reply.status(400).send({ error: `No actor configured for ${sourceType}` })

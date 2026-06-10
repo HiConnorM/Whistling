@@ -1,0 +1,28 @@
+[
+  {
+    "reviewId": "ChZDSUhNMG9nS0VJQ0FnSURGcXZxbXxnEAE",
+    "reviewUrl": "https://www.google.com/maps/reviews/data=!4m8!14m7!1m6!2m5!1sChZDSUhNMG9nS0VJQ0FnSURGcXZxbXxnEAE",
+    "name": "Maria Lopez",
+    "stars": 5,
+    "text": "Absolutely loved the tasting menu. Our server remembered us from last visit and the kitchen handled a gluten allergy perfectly.",
+    "publishedAtDate": "2026-05-28T18:42:11.000Z",
+    "placeId": "ChIJN1t_tDeuEmsRUsoyG83frY4",
+    "title": "Lakeside Grill",
+    "url": "https://www.google.com/maps/place/Lakeside+Grill"
+  },
+  {
+    "reviewId": "ChZDSUhNMG9nS0VJQ0FnSURGcXZxbXxnEAF",
+    "reviewUrl": "https://www.google.com/maps/reviews/data=!4m8!14m7!1m6!2m5!1sChZDSUhNMG9nS0VJQ0FnSURGcXZxbXxnEAF",
+    "reviewer": { "name": "Dan Okafor", "id": "1029384756" },
+    "rating": 2,
+    "text": "Waited 40 minutes past our reservation. Food was fine but the front of house was chaos on a Friday night.",
+    "publishedAt": "2026-05-25T01:15:00.000Z"
+  },
+  {
+    "reviewId": "ChZDSUhNMG9nS0VJQ0FnSURGcXZxbXxnEAG",
+    "name": "Rating only, no text",
+    "stars": 4,
+    "text": "",
+    "publishedAtDate": "2026-05-20T12:00:00.000Z"
+  }
+]

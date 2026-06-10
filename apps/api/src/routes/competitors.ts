@@ -121,7 +121,10 @@ export async function competitorRoutes(app: FastifyInstance) {
   // Returns ranked suggestions — user confirms which to track.
   app.post(
     '/discover',
-    { preHandler: [app.authenticate] },
+    {
+      preHandler: [app.authenticate],
+      config: { rateLimit: { max: 10, timeWindow: '1 hour' } },
+    },
     async (req, reply) => {
       const body = discoverSchema.parse(req.body)
       const { organizationId } = req.user

@@ -187,9 +187,11 @@ async function scanSourceViaApify(
   // actor itself never scrapes more than the plan allows (not just dataset fetch).
   const budget = { ...depthBudget, maxReviews: Math.min(depthBudget.maxReviews, maxItems) }
 
-  // Derive scan / freshness mode — payload values override auto-detection
-  const scanMode = payload.scanMode ?? deriveScanMode(source, payload)
-  const freshnessMode = payload.freshnessMode ?? deriveFreshnessMode(scanMode)
+  // Scan / freshness mode priority: payload → source metadata → derived from history
+  const scanMode =
+    payload.scanMode ?? (meta?.['scanMode'] as ScanMode | undefined) ?? deriveScanMode(source, payload)
+  const freshnessMode =
+    payload.freshnessMode ?? (meta?.['freshnessMode'] as FreshnessMode | undefined) ?? deriveFreshnessMode(scanMode)
   const since = payload.lastSuccessfulScanAt
     ? new Date(payload.lastSuccessfulScanAt)
     : (source.lastSuccessfulScanAt ?? undefined)
@@ -306,8 +308,10 @@ async function launchSocialDiscovery(
   }
 
   const depthBudget = getScanBudget(scanDepthKey as 'light' | 'standard' | 'deep')
-  const scanMode = payload.scanMode ?? deriveScanMode(source, payload)
-  const freshnessMode = payload.freshnessMode ?? deriveFreshnessMode(scanMode)
+  const scanMode =
+    payload.scanMode ?? (meta?.['scanMode'] as ScanMode | undefined) ?? deriveScanMode(source, payload)
+  const freshnessMode =
+    payload.freshnessMode ?? (meta?.['freshnessMode'] as FreshnessMode | undefined) ?? deriveFreshnessMode(scanMode)
   const since = payload.lastSuccessfulScanAt
     ? new Date(payload.lastSuccessfulScanAt)
     : (source.lastSuccessfulScanAt ?? undefined)

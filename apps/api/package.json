@@ -25,6 +25,7 @@
     "bullmq": "^5.34.5",
     "fastify": "^4.28.1",
     "fastify-plugin": "^4.5.1",
+    "fastify-raw-body": "^5.0.0",
     "ioredis": "^5.4.2",
     "papaparse": "^5.4.1",
     "stripe": "^17.5.0",

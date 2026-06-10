@@ -1,45 +1,43 @@
 import { NextResponse } from 'next/server'
-import { db } from '@whistling/db'
-import { getSession } from '@/lib/session'
 import { apiHandler, ApiError } from '@/lib/api-error'
-import { getQueue } from '@whistling/jobs'
+import { apiProxy, getApiAuthContext } from '@/lib/api-proxy'
 
 type Params = { params: Promise<{ id: string }> }
 
+interface SourceSummary {
+  id: string
+  type: string
+  status: string
+}
+
+/**
+ * Queue a scan for every connected source of a business, going through the
+ * Fastify API so plan limits, org rate limits, and audit logging all apply.
+ */
 export const POST = apiHandler(async (_req: Request, { params }: Params) => {
-  const session = await getSession()
-  if (!session) throw new ApiError(401, 'Unauthorized')
-
   const { id } = await params
-  const business = await db.business.findUnique({
-    where: { id },
-    include: { sources: { where: { status: 'CONNECTED' } } },
-  })
-  if (!business) throw new ApiError(404, 'Business not found')
+  const auth = await getApiAuthContext()
 
-  const membership = await db.orgMembership.findFirst({
-    where: { userId: session.user.id, organizationId: business.organizationId },
-  })
-  if (!membership) throw new ApiError(403, 'Forbidden')
+  const sources = await apiProxy<SourceSummary[]>(`/api/sources/${id}`, { auth })
+  const connected = sources.filter((s) => s.status === 'CONNECTED')
 
-  if (business.sources.length === 0) {
+  if (connected.length === 0) {
     throw new ApiError(422, 'No connected sources to scan')
   }
 
-  const connection = { url: process.env['REDIS_URL'] ?? 'redis://localhost:6379' }
+  let queued = 0
+  let firstError: ApiError | null = null
 
-  let queue: ReturnType<typeof getQueue>
-  try {
-    queue = getQueue('ingestion', connection)
-  } catch {
-    throw new ApiError(503, 'Job queue unavailable')
+  for (const source of connected) {
+    try {
+      await apiProxy(`/api/sources/${source.id}/scan`, { method: 'POST', auth })
+      queued++
+    } catch (err) {
+      if (err instanceof ApiError && !firstError) firstError = err
+    }
   }
 
-  const jobs = await Promise.all(
-    business.sources.map((source) =>
-      queue.add('scan-source', { sourceId: source.id, businessId: id }),
-    ),
-  )
+  if (queued === 0 && firstError) throw firstError
 
-  return NextResponse.json({ queued: jobs.length })
+  return NextResponse.json({ queued })
 })
